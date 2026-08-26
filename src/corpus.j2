@@ -350,20 +350,20 @@ func hit_cmp(a, b) = {
 
 func sort_hits(hits) = sort_by(hits, hit_cmp)
 
-func prf(tp, fp, n_fn) = {
+func prf(tp, fp, misses) = {
     prec := 0.0
     rec := 0.0
     if tp + fp == 0 {
-        if n_fn == 0 {
+        if misses == 0 {
             prec = 1.0
         }
     } else {
         prec = tp / (tp + fp)
     }
-    if tp + n_fn == 0 {
+    if tp + misses == 0 {
         rec = 1.0
     } else {
-        rec = tp / (tp + n_fn)
+        rec = tp / (tp + misses)
     }
     f1 := 0.0
     if prec + rec > 0.0 {
@@ -391,30 +391,30 @@ func detector_ids() = {
     give sort(ids)
 }
 
-func per_rule_row(rule_id, expected, findings, fn_list, fp_list) = {
+func per_rule_row(rule_id, expected, findings, miss_list, extra_list) = {
     exp = count_rule_id(expected, rule_id)
     det = count_rule_id(findings, rule_id)
-    n_fn = count_rule_id(fn_list, rule_id)
-    fp = count_rule_id(fp_list, rule_id)
-    tp = exp - n_fn
-    m = prf(tp, fp, n_fn)
+    misses = count_rule_id(miss_list, rule_id)
+    extra = count_rule_id(extra_list, rule_id)
+    tp = exp - misses
+    m = prf(tp, extra, misses)
     give {
         rule_id: rule_id,
         expected: exp,
         detected: det,
         true_positives: tp,
-        false_positives: fp,
-        false_negatives: n_fn,
+        false_positives: extra,
+        false_negatives: misses,
         precision: m.precision,
         recall: m.recall,
         f1: m.f1
     }
 }
 
-func per_rule_stats(expected, findings, fn_list, fp_list) = {
+func per_rule_stats(expected, findings, miss_list, extra_list) = {
     rows := []
     for id in detector_ids() {
-        rows = rows + [per_rule_row(id, expected, findings, fn_list, fp_list)]
+        rows = rows + [per_rule_row(id, expected, findings, miss_list, extra_list)]
     }
     give rows
 }
@@ -424,40 +424,40 @@ func per_rule_stats(expected, findings, fn_list, fp_list) = {
 func score_against_truth(expected, findings) = {
     ordered_expected = sort_hits(expected)
     matched := []
-    fn_list := []
+    miss_list := []
     j := 0
     for e in ordered_expected {
         j = first_unused_match(e, findings, matched)
         if j < 0 {
-            fn_list = fn_list + [compact_hit(e.file, e.line, e.rule_id)]
+            miss_list = miss_list + [compact_hit(e.file, e.line, e.rule_id)]
         } else {
             matched = matched + [j]
         }
     }
-    fp_list := []
+    extra_list := []
     j = 0
     repeat j < count(findings) {
         if not contains(matched, j) {
-            fp_list = fp_list + [compact_hit(findings[j].file, findings[j].line, findings[j].rule_id)]
+            extra_list = extra_list + [compact_hit(findings[j].file, findings[j].line, findings[j].rule_id)]
         }
         j += 1
     }
-    fn_sorted = sort_hits(fn_list)
-    fp_sorted = sort_hits(fp_list)
+    miss_sorted = sort_hits(miss_list)
+    extra_sorted = sort_hits(extra_list)
     tp = count(matched)
-    fp = count(fp_sorted)
-    n_fn = count(fn_sorted)
-    m = prf(tp, fp, n_fn)
-    rules = per_rule_stats(ordered_expected, findings, fn_sorted, fp_sorted)
+    extra = count(extra_sorted)
+    misses = count(miss_sorted)
+    m = prf(tp, extra, misses)
+    rules = per_rule_stats(ordered_expected, findings, miss_sorted, extra_sorted)
     give {
         true_positives: tp,
-        false_positives: fp,
-        false_negatives: n_fn,
+        false_positives: extra,
+        false_negatives: misses,
         precision: m.precision,
         recall: m.recall,
         f1: m.f1,
-        unmatched_expected: fn_sorted,
-        unmatched_findings: fp_sorted,
+        unmatched_expected: miss_sorted,
+        unmatched_findings: extra_sorted,
         rules: rules
     }
 }
