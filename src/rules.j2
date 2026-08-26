@@ -99,7 +99,7 @@ func builtin_rules() = [
         category: "credential",
         severity: Severity::critical(),
         applies: "*",
-        pattern: "(?i)\\b(postgres(?:ql)?|mysql|mariadb|mongodb(?:\\+srv)?|redis|rediss|amqp|amqps|mssql|sqlserver)://[^\\s:/@]+:[^\\s@/]+@",
+        pattern: "(?i)\\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\\+srv)?|redis|rediss|amqp|amqps|mssql|sqlserver)://[^\\s:/@]+:[^\\s@/]+@",
         description: "Database URL whose userinfo includes a password (scheme://user:pass@host). URLs without a password do not match",
         recommendation: "Rotate the database password and pass the URL through the environment",
         placeholders: true,
@@ -275,6 +275,9 @@ func match_to_findings(rule, path, content, m) = {
         }
     }
     if rule.min_len > 0 and len(raw) < rule.min_len {
+        raw = strip_quotes(m.text)
+    }
+    if rule.min_len > 0 and len(raw) < rule.min_len {
         give []
     }
     if rule.placeholders and looks_like_placeholder(raw) {
@@ -351,10 +354,21 @@ RISKY_CONFIG_IDS = [
     "authentication_disabled"
 ]
 
-func rule_has_id(ids) = func(rule) = contains(ids, rule.id)
+func rules_with_ids(ids) = {
+    out := []
+    all = builtin_rules()
+    i := 0
+    repeat i < count(all) {
+        if contains(ids, all[i].id) {
+            out = out + [all[i]]
+        }
+        i += 1
+    }
+    give out
+}
 
 func detect_rule_ids(snap, ids) = {
-    give analyze_content_with(snap.path, snap.content, builtin_rules() ? rule_has_id(ids))
+    give analyze_content_with(snap.path, snap.content, rules_with_ids(ids))
 }
 
 func detect_known_token_formats(snap) = detect_rule_ids(snap, KNOWN_TOKEN_IDS)
