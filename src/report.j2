@@ -78,7 +78,13 @@ func format_finding_blocks(findings, ai_share) = {
                 "This does not guarantee the files contain no sensitive information."
             ], "\n")
     }
-    give join(ordered >> func(f) = format_finding_block(f, ai_share), "\n\n")
+    parts := []
+    i := 0
+    repeat i < count(ordered) {
+        parts = parts + [format_finding_block(ordered[i], ai_share)]
+        i += 1
+    }
+    give join(parts, "\n\n")
 }
 
 func format_summary(result) = {
@@ -136,7 +142,16 @@ func finding_json_record(f) = {
     }
 }
 
-func findings_json_records(findings) = sort_findings(findings) >> finding_json_record
+func findings_json_records(findings) = {
+    ordered = sort_findings(findings)
+    out := []
+    i := 0
+    repeat i < count(ordered) {
+        out = out + [finding_json_record(ordered[i])]
+        i += 1
+    }
+    give out
+}
 
 # Document as J2 maps/seqs, then json.stringify. Do not concatenate JSON text.
 func scan_report_document(result) = {

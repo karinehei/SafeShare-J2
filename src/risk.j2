@@ -30,14 +30,32 @@ func band_points(n, first, extra, cap) = {
 }
 
 func count_severity_rank(findings, rank) = {
-    give count(findings ? (func(f) = f.severity.rank == rank))
+    n := 0
+    i := 0
+    repeat i < count(findings) {
+        if findings[i].severity.rank == rank {
+            n += 1
+        }
+        i += 1
+    }
+    give n
 }
 
 func is_critical_credential(f) = {
     give f.severity.rank == 5 and (f.category == "secret" or f.category == "credential")
 }
 
-func count_critical_credentials(findings) = count(findings ? is_critical_credential)
+func count_critical_credentials(findings) = {
+    n := 0
+    i := 0
+    repeat i < count(findings) {
+        if is_critical_credential(findings[i]) {
+            n += 1
+        }
+        i += 1
+    }
+    give n
+}
 
 func risk_label(score) = {
     if score >= 85 {

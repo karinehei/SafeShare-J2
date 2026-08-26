@@ -34,7 +34,17 @@ func is_ai_share_path(path) = {
 # Credentials must not be pasted. Config and entropy are warnings, not proof.
 func is_blocking_finding(f) = f.category == "secret" or f.category == "credential"
 
-func count_blocking(findings) = count(findings ? is_blocking_finding)
+func count_blocking(findings) = {
+    n := 0
+    i := 0
+    repeat i < count(findings) {
+        if is_blocking_finding(findings[i]) {
+            n += 1
+        }
+        i += 1
+    }
+    give n
+}
 
 func finding_cmp_ai(a, b) = {
     a_ai = is_ai_share_path(a.file)

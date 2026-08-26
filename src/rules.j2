@@ -306,24 +306,33 @@ func match_to_findings(rule, path, content, m) = {
             }, raw)]
 }
 
-func matches_to_findings(rule, path, content) = func(m) = match_to_findings(rule, path, content, m)
-
 # Independent per match, then concat. regex.find_all itself stays a library call.
 func run_rule(rule, path, content) = {
     if not rule_applies(rule, path) {
         give []
     }
-    give flatten(regex.find_all(rule.pattern, content) >> matches_to_findings(rule, path, content))
+    matches = regex.find_all(rule.pattern, content)
+    out := []
+    i := 0
+    repeat i < count(matches) {
+        out = out + match_to_findings(rule, path, content, matches[i])
+        i += 1
+    }
+    give out
 }
 
 func apply_rule(rule, snapshot) = run_rule(rule, snapshot.path, snapshot.content)
 
-func rule_on_content(path, content) = func(rule) = run_rule(rule, path, content)
-
 # Regex table vs entropy stay separate functions. analyze_snapshot binds four
 # independent family calls; analyze_content_with remains the per-subset engine.
 func analyze_content_with(path, content, rules) = {
-    give flatten(rules >> rule_on_content(path, content))
+    out := []
+    i := 0
+    repeat i < count(rules) {
+        out = out + run_rule(rules[i], path, content)
+        i += 1
+    }
+    give out
 }
 
 # Rule families for independent pure calls (J2 montecarlo shape: sibling
