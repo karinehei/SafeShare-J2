@@ -1,0 +1,446 @@
+import "scanner.j2"
+
+# Sanitization pipeline
+#
+# 1. Refuse dest overlapping source: same path, dest inside src, src inside dest
+#    (parent dest), `.`, `..`, or dest with `..` segments.
+# 2. Walk source first; create dest after, so the output tree is never an input.
+# 3. Only write text files that were read in this process (size-capped). Never
+#    fs.copy: that can copy a symlink that still points at a secret.
+# 4. Reject relative names with .., absolute names, or paths that do not stay
+#    under dest. Skip SANITIZATION_REPORT.json from the source tree.
+# 5. High-confidence redact only; reports never include raw secrets or exception
+#    text. Unsafe paths are logged as "(unsafe path)", not the raw name.
+# 7. Pipeline is load (serial I/O) → plan_sanitize_jobs (pure, per file) →
+#    write (serial I/O). Do not add threads around copies.
+
+REDACTED_PLACEHOLDER = "[SAFESHARE_REDACTED]"
+SANITIZE_REPORT_NAME = "SANITIZATION_REPORT.json"
+
+HIGH_CONFIDENCE_REDACT_IDS = [
+    "aws_access_key_id",
+    "github_token",
+    "pem_private_key",
+    "database_url_credentials"
+]
+
+func rule_redacts(rule) = contains(HIGH_CONFIDENCE_REDACT_IDS, rule.id)
+
+# True when dest would write into the source tree (same path, inside it, or a
+# parent of it), or dest is `.` / `..` / a path with `..` segments.
+func dest_not_allowed(src, dest) = {
+    if not dest_path_is_safe(dest) {
+        give true
+    }
+    if path_is_inside(src, dest) {
+        give true
+    }
+    if path_is_inside(dest, src) {
+        give true
+    }
+    give false
+}
+
+func span_in_bounds(span, n) = {
+    if span.start < 0 or span.end < span.start {
+        give false
+    }
+    if span.end > n {
+        give false
+    }
+    give true
+}
+
+func db_redacted_match(matched) = {
+    i = text.find(matched, "://")
+    if i == null {
+        give REDACTED_PLACEHOLDER
+    }
+    scheme = slice(matched, 0, i)
+    give scheme + "://" + REDACTED_PLACEHOLDER + "@"
+}
+
+func pem_block_end(content, start) = {
+    rest = slice(content, start, len(content))
+    m = regex.find("-----END [A-Z0-9 ]*PRIVATE KEY-----", rest)
+    if m == null {
+        give start + len(rest)
+    }
+    give start + m.end
+}
+
+func redact_span_for(rule, content, m) = {
+    if rule.min_len > 0 and len(m.text) < rule.min_len {
+        give null
+    }
+    sample = secret_from_match(rule.pattern, content, m)
+    if rule.placeholders and looks_like_placeholder(sample) {
+        give null
+    }
+    if rule.id == "pem_private_key" {
+        give {
+            start: m.start,
+            end: pem_block_end(content, m.start),
+            replacement: REDACTED_PLACEHOLDER,
+            rule_id: rule.id
+        }
+    }
+    if rule.id == "database_url_credentials" {
+        give {
+            start: m.start,
+            end: m.start + len(m.text),
+            replacement: db_redacted_match(m.text),
+            rule_id: rule.id
+        }
+    }
+    give {
+        start: m.start,
+        end: m.start + len(m.text),
+        replacement: REDACTED_PLACEHOLDER,
+        rule_id: rule.id
+    }
+}
+
+func span_start_asc(a, b) = a.start - b.start
+
+func span_start_desc(a, b) = b.start - a.start
+
+# Overlap resolution is a left-to-right dependence. Keep serial.
+func non_overlapping_spans(spans) = {
+    ordered = sort_by(spans, span_start_asc)
+    kept := []
+    last_end := 0
+    for s in ordered {
+        if s.start < last_end {
+            skip
+        }
+        kept = kept + [s]
+        last_end = s.end
+    }
+    give kept
+}
+
+func span_or_empty(rule, content, m) = {
+    span = redact_span_for(rule, content, m)
+    if span != null and span_in_bounds(span, len(content)) {
+        give [span]
+    }
+    give []
+}
+
+func spans_from_match(rule, content) = func(m) = span_or_empty(rule, content, m)
+
+func spans_for_rule(rule, path, content) = {
+    if not rule_redacts(rule) {
+        give []
+    }
+    if not rule_applies(rule, path) {
+        give []
+    }
+    give flatten(regex.find_all(rule.pattern, content) >> spans_from_match(rule, content))
+}
+
+func spans_on_file(path, content) = func(rule) = spans_for_rule(rule, path, content)
+
+# Independent per high-confidence rule, then a serial overlap fold.
+func collect_redact_spans(path, content) =
+    non_overlapping_spans(flatten(builtin_rules() >> spans_on_file(path, content)))
+
+# Sequential splices from the right; each string depends on the previous.
+func apply_redact_spans(content, spans) = {
+    out := content
+    for s in sort_by(spans, span_start_desc) {
+        out = slice(out, 0, s.start) + s.replacement + slice(out, s.end, len(out))
+    }
+    give out
+}
+
+func span_rule_ids(spans) = {
+    ids := []
+    for s in spans {
+        if contains(ids, s.rule_id) {
+            skip
+        }
+        ids = ids + [s.rule_id]
+    }
+    give ids
+}
+
+# Pure. Returns new text; does not write files. No raw secret in the result map.
+func redact_content(path, content) = {
+    spans = collect_redact_spans(path, content)
+    next = apply_redact_spans(content, spans)
+    give {
+        content: next,
+        modified: next != content,
+        replacements: count(spans),
+        rule_ids: span_rule_ids(spans)
+    }
+}
+
+func sanitization_report_document(src, dest, copied, modified, skipped, replacements) = {
+    give {
+        version: "0.1.0",
+        source: src,
+        output: dest,
+        placeholder: REDACTED_PLACEHOLDER,
+        high_confidence_rules: HIGH_CONFIDENCE_REDACT_IDS,
+        summary: {
+            files_copied: copied,
+            files_modified: count(modified),
+            files_skipped: count(skipped),
+            replacements: replacements
+        },
+        modified_files: modified,
+        skipped: skipped
+    }
+}
+
+func format_modified_line(row) = fmt("  {}  ({}, {} replacement(s))", row.file, join(row.rule_ids, ", "), row.replacements)
+
+func format_modified_section(modified) = {
+    if count(modified) == 0 {
+        give ["Modified files: none"]
+    }
+    lines := ["Modified files:"]
+    for row in modified {
+        lines = lines + [format_modified_line(row)]
+    }
+    give lines
+}
+
+func format_sanitize_report(src, dest, doc) = {
+    head = [
+        "SafeShare J2 — sanitize",
+        "────────────────────────────────────────",
+        "",
+        fmt("Source: {}", src),
+        fmt("Output: {}", dest),
+        "",
+        "Heuristic findings are not redacted.",
+        "Only high-confidence secret patterns are replaced with [SAFESHARE_REDACTED].",
+        ""
+    ]
+    stats = [
+        "",
+        fmt("Copied:     {}", doc.summary.files_copied),
+        fmt("Modified:   {}", doc.summary.files_modified),
+        fmt("Skipped:    {}", doc.summary.files_skipped),
+        fmt("Redactions: {}", doc.summary.replacements)
+    ]
+    give join(head + format_modified_section(doc.modified_files) + stats, "\n")
+}
+
+func mkdir_for_file(path) = {
+    d = dirname(path)
+    if d == "" or d == "." {
+        give
+    }
+    fs.mkdir_p(d)
+}
+
+func write_text(dest_path, content) = {
+    mkdir_for_file(dest_path)
+    fs.write_file(dest_path, content)
+}
+
+# Only write regular text we have already read. Flattening via write_file
+# avoids copying a symlink that still points at a secret outside dest.
+func write_if_contained(src, dest, outp, content) = {
+    if dest_not_allowed(src, dest) {
+        give false
+    }
+    if not path_is_inside(dest, outp) {
+        give false
+    }
+    if path_is_inside(src, outp) {
+        give false
+    }
+    write_text(outp, content)
+    give true
+}
+
+func source_rel(src, path) = {
+    rel = rel_path(src, path)
+    try {
+        if fs.is_file(src) {
+            give basename(src)
+        }
+    } else RuntimeError {
+        give rel
+    }
+    give rel
+}
+
+func skip_reason_for_unread(path) = {
+    try {
+        meta = fs.metadata(path)
+        if should_skip_size(meta.size, MAX_TEXT_BYTES) {
+            give "too_large"
+        }
+        give "binary"
+    } else RuntimeError {
+        give "unreadable"
+    }
+}
+
+func skip_job(name, reason) = {
+    give {kind: "skip", file: name, reason: reason}
+}
+
+func path_escaped_source(src, path) = {
+    try {
+        if not fs.is_file(src) and not path_is_inside(src, path) {
+            give true
+        }
+    } else RuntimeError {
+        give false
+    }
+    give false
+}
+
+# Serial I/O: classify one discovered path. Do not parallelize reads.
+func sanitize_job_for(src, dest, path) = {
+    rel = source_rel(src, path)
+    if lower(basename(path)) == lower(SANITIZE_REPORT_NAME) {
+        give skip_job(rel, "report_file")
+    }
+    if not rel_is_safe(rel) {
+        give skip_job("(unsafe path)", "unsafe_path")
+    }
+    if path_escaped_source(src, path) {
+        give skip_job("(unsafe path)", "unsafe_path")
+    }
+    outp = safe_dest_join(dest, rel)
+    if outp == "" {
+        give skip_job("(unsafe path)", "unsafe_path")
+    }
+    try {
+        if has_binary_extension(path) {
+            give skip_job(rel, "binary")
+        }
+        got = try_load_text(path, MAX_TEXT_BYTES)
+        if got.snapshot == null {
+            give skip_job(rel, skip_reason_for_unread(path))
+        }
+        give {kind: "text", file: rel, outp: outp, content: got.snapshot.content}
+    } else RuntimeError {
+        give skip_job(rel, "unreadable")
+    }
+}
+
+func load_sanitize_jobs(src, dest, discovered) = {
+    jobs := []
+    for path in discovered {
+        jobs = jobs + [sanitize_job_for(src, dest, path)]
+    }
+    give jobs
+}
+
+# Pure. Independent per loaded text file — this is the parallelizable stage.
+func plan_sanitize_job(job) = {
+    if job.kind != "text" {
+        give job
+    }
+    red = redact_content(job.file, job.content)
+    give {
+        kind: "text",
+        file: job.file,
+        outp: job.outp,
+        content: red.content,
+        modified: red.modified,
+        replacements: red.replacements,
+        rule_ids: red.rule_ids
+    }
+}
+
+func plan_sanitize_jobs(jobs) = jobs >> plan_sanitize_job
+
+# Serial I/O writes. Stats are a fold over write outcomes, including failures.
+func write_sanitize_jobs(src, dest, planned) = {
+    copied := 0
+    replacements := 0
+    modified := []
+    skipped := []
+    for job in planned {
+        if job.kind == "skip" {
+            skipped = skipped + [{file: job.file, reason: job.reason}]
+            skip
+        }
+        try {
+            if not write_if_contained(src, dest, job.outp, job.content) {
+                skipped = skipped + [{file: job.file, reason: "unsafe_path"}]
+                skip
+            }
+            copied += 1
+            if job.modified {
+                replacements += job.replacements
+                modified = modified + [{
+                    file: job.file,
+                    replacements: job.replacements,
+                    rule_ids: job.rule_ids
+                }]
+            }
+        } else RuntimeError {
+            skipped = skipped + [{file: job.file, reason: "unreadable"}]
+        }
+    }
+    give {
+        copied: copied,
+        replacements: replacements,
+        modified: modified,
+        skipped: skipped
+    }
+}
+
+func sanitize_tree(src, dest) = {
+    if dest_not_allowed(src, dest) {
+        print("sanitize: output must not overlap the source tree")
+        print("use a sibling or absolute path, e.g. ./project-safe or /tmp/project-safe")
+        proc.exit(2)
+    }
+    try {
+        if not fs.exists(src) {
+            print(fmt("path not found: {}", src))
+            proc.exit(2)
+        }
+    } else RuntimeError {
+        print("cannot access source path")
+        proc.exit(2)
+    }
+
+    ignore = merge_ignore_rules(read_safeshareignore(src), [])
+    discovered = discover_files(src, ignore)
+    jobs = load_sanitize_jobs(src, dest, discovered)
+    planned = plan_sanitize_jobs(jobs)
+
+    try {
+        fs.mkdir_p(dest)
+    } else RuntimeError {
+        print("cannot create output directory")
+        proc.exit(2)
+    }
+    if dest_not_allowed(src, dest) {
+        print("sanitize: output resolved inside the source tree")
+        proc.exit(2)
+    }
+
+    stats = write_sanitize_jobs(src, dest, planned)
+
+    doc = sanitization_report_document(src, dest, stats.copied, stats.modified, stats.skipped, stats.replacements)
+    report_path = join_path(dest, SANITIZE_REPORT_NAME)
+    if not path_is_inside(dest, report_path) or path_is_inside(src, report_path) {
+        print("sanitize: refused to write report outside the output directory")
+        proc.exit(2)
+    }
+    try {
+        fs.write_file(report_path, json.stringify_pretty(doc))
+    } else RuntimeError {
+        print("could not write SANITIZATION_REPORT.json")
+        proc.exit(2)
+    }
+
+    print(format_sanitize_report(src, dest, doc))
+    print("")
+    print(fmt("Wrote {}", SANITIZE_REPORT_NAME))
+}

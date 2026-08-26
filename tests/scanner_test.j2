@@ -1,0 +1,108 @@
+import "../src/scanner.j2"
+import "../src/cli.j2"
+
+assert_eq(join_path("proj", "a.txt"), "proj/a.txt")
+assert_eq(join_path("proj/", "a.txt"), "proj/a.txt")
+assert_eq(should_skip_name("."), true)
+assert_eq(should_skip_name(".."), true)
+assert_eq(should_skip_name(".git"), true)
+assert_eq(should_skip_name("node_modules"), true)
+assert_eq(should_skip_name("dist"), true)
+assert_eq(should_skip_name("build"), true)
+assert_eq(should_skip_name("target"), true)
+assert_eq(should_skip_name("__pycache__"), true)
+assert_eq(should_skip_name(".next"), true)
+assert_eq(should_skip_name(".env"), false)
+assert_eq(should_skip_name("src"), false)
+
+assert_eq(basename("proj/nested/note.txt"), "note.txt")
+assert_eq(dirname("proj/nested/note.txt"), "proj/nested")
+assert_eq(rel_path("tests/fixtures", "tests/fixtures/nested/note.txt"), "nested/note.txt")
+
+excluded = parse_command(["safeshare.j2", "scan", "./proj", "--exclude", "*.min.js", "--exclude", "generated/"])
+assert_eq(excluded.ok, true)
+assert_eq(excluded.path, "./proj")
+assert_eq(count(excluded.excludes), 2)
+assert_eq(excluded.excludes[0], "*.min.js")
+assert_eq(excluded.excludes[1], "generated/")
+assert_eq(rel_path("proj/", "proj/a.txt"), "a.txt")
+assert_eq(rel_path("src/app.ts", "src/app.ts"), "src/app.ts")
+assert_eq(rel_path("proj", "proj\\a.txt"), "a.txt")
+
+assert_eq(path_is_inside("./project", "./project/nested"), true)
+assert_eq(path_is_inside("./project", "./project-safe"), false)
+assert_eq(path_is_inside(".", "./out"), true)
+assert_eq(path_is_inside(".", "/tmp/out"), false)
+assert_eq(rel_is_safe("nested/note.txt"), true)
+assert_eq(rel_is_safe("../x"), false)
+assert_eq(dest_path_is_safe("./project-safe"), true)
+assert_eq(dest_path_is_safe(".."), false)
+
+assert_eq(has_binary_extension("photo.PNG"), true)
+assert_eq(has_binary_extension("lib.so"), true)
+assert_eq(has_binary_extension("app.ts"), false)
+assert_eq(has_binary_extension(".env"), false)
+
+assert_eq(looks_like_binary("hello"), false)
+assert_eq(looks_like_binary(text.from_bytes([104, 0, 105])), true)
+
+assert_eq(should_skip_size(1_000_001, DEFAULT_MAX_TEXT_BYTES), true)
+assert_eq(should_skip_size(100, DEFAULT_MAX_TEXT_BYTES), false)
+assert_eq(should_skip_size(50, 50), false)
+assert_eq(should_skip_size(51, 50), true)
+
+snaps = relativize_snapshots("proj", [FileSnapshot(path: "proj/nested/app.env", content: "DEBUG=true\n")])
+assert_eq(snaps[0].path, "nested/app.env")
+hits = analyze_all(snaps)
+assert_eq(count(hits), 1)
+assert_eq(hits[0].file, "nested/app.env")
+assert_eq(hits[0].category, "risky_config")
+assert_eq(count(analyze_snapshot(snaps[0])), 1)
+assert_eq(snapshot_paths(snaps)[0], "nested/app.env")
+
+# Stats are assembled without touching the filesystem.
+loaded = {
+    files_discovered: 3,
+    files_scanned: 1,
+    files_skipped: 2,
+    bytes_scanned: 12,
+    snapshots: snaps
+}
+result = complete_scan(loaded)
+assert_eq(result.files_discovered, 3)
+assert_eq(result.files_scanned, 1)
+assert_eq(result.files_skipped, 2)
+assert_eq(result.bytes_scanned, 12)
+assert_eq(result.findings_count, 1)
+
+cmd = parse_command(["safeshare.j2", "scan", "./proj"])
+assert_eq(cmd.ok, true)
+assert_eq(cmd.command, "scan")
+assert_eq(cmd.path, "./proj")
+assert_eq(cmd.max_bytes, DEFAULT_MAX_TEXT_BYTES)
+assert_eq(count(cmd.excludes), 0)
+
+bare = parse_command(["safeshare.j2", "./proj"])
+assert_eq(bare.ok, true)
+assert_eq(bare.command, "scan")
+assert_eq(bare.path, "./proj")
+
+missing = parse_command(["safeshare.j2"])
+assert_eq(missing.ok, false)
+
+granted = parse_command(["safeshare.j2", "--allow-fs", "scan", "./proj"])
+assert_eq(granted.ok, true)
+assert_eq(granted.path, "./proj")
+
+limited = parse_command(["safeshare.j2", "scan", "./proj", "--max-bytes", "5000"])
+assert_eq(limited.ok, true)
+assert_eq(limited.path, "./proj")
+assert_eq(limited.max_bytes, 5000)
+
+bench = parse_command(["safeshare.j2", "benchmark", "./benchmark-corpus", "--json", "bench.json"])
+assert_eq(bench.ok, true)
+assert_eq(bench.command, "benchmark")
+assert_eq(bench.path, "./benchmark-corpus")
+assert_eq(bench.json_out, "bench.json")
+
+print("scanner_test ok")

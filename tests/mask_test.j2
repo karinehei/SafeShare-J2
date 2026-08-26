@@ -1,0 +1,61 @@
+import "../src/finding.j2"
+
+# Empty and tiny values: hide everything, keep length (except empty → empty).
+assert_eq(mask_secret(""), "")
+assert_eq(mask_secret("a"), "*")
+assert_eq(mask_secret("ab"), "**")
+assert_eq(mask_secret("abc"), "***")
+assert_eq(mask_secret("abcd"), "****")
+assert_eq(mask_secret("abcde"), "*****")
+
+# First kept prefix at length 6.
+assert_eq(mask_secret("secret"), "s*****")
+assert_eq(mask_keep(6).head, 1)
+assert_eq(mask_keep(6).tail, 0)
+
+# Prefix and suffix both appear at length 8.
+assert_eq(mask_secret("password"), "p******d")
+assert_eq(mask_keep(8).head, 1)
+assert_eq(mask_keep(8).tail, 1)
+
+# Prompt example: identify sk-… tokens without exposing the body.
+openai = "sk-1234567890abcdefghijkl"
+assert_eq(len(openai), 25)
+assert_eq(mask_secret(openai), "sk-1******************jkl")
+assert_eq(contains(mask_secret(openai), openai), false)
+
+# Database password: the complete value must not appear in the mask.
+db = "supersecretpassword123"
+masked_db = mask_secret(db)
+assert_eq(len(db), 23)
+assert_eq(contains(masked_db, db), false)
+assert_eq(contains(masked_db, "supersecretpassword123"), false)
+assert_eq(len(masked_db), len(db))
+assert_eq(masked_db, "sup******************23")
+
+# Deterministic: same input, same mask.
+assert_eq(mask_secret(openai), mask_secret(openai))
+assert_eq(mask_secret(db), mask_secret(db))
+
+# Length is preserved for every non-empty input.
+samples = ["x", "ab", "12345678", openai, db, "-----BEGIN RSA PRIVATE KEY-----"]
+for s in samples {
+    m = mask_secret(s)
+    assert_eq(len(m), len(s))
+    assert_eq(contains(m, s), false)
+}
+
+# Middle is only asterisks; kept ends are small.
+k20 = mask_keep(20)
+assert_eq(k20.head, 3)
+assert_eq(k20.tail, 2)
+assert_eq(mask_secret("AKIAIOSFODNN7EXAMPLE"), "AKI***************LE")
+
+# Whitespace is masked as-is (no trimming).
+assert_eq(mask_secret("   "), "***")
+assert_eq(mask_secret("  secret  "), " ******** ")
+
+# Quoted payload still hides the interior.
+assert_eq(mask_secret("\"hunter2_secret\""), "\"h************t\"")
+
+print("mask_test ok")

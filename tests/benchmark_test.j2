@@ -1,0 +1,101 @@
+import "../src/benchmark.j2"
+
+assert_eq(format_int_commas(0), "0")
+assert_eq(format_int_commas(18), "18")
+assert_eq(format_int_commas(25000), "25,000")
+assert_eq(format_int_commas(1000000), "1,000,000")
+
+assert_eq(format_fixed_2(3.84), "3.84")
+assert_eq(format_fixed_2(1.72), "1.72")
+assert_eq(format_fixed_2(458.0), "458.00")
+
+assert_eq(format_data_size(500), "500 B")
+assert_eq(format_data_size(1_720_000_000), "1.72 GB")
+assert_eq(format_data_size(1_000_000), "1.00 MB")
+
+assert_eq(format_seconds(3840.0), "3.84 s")
+
+# 1.72 GB in 3.84 s → 1720 / 3.84 MB/s
+tput = mb_per_s(1_720_000_000, 3840.0)
+assert_eq(round(tput), 448)
+
+assert_eq(round(per_second(42, 3840.0) * 10) / 10, 10.9)
+
+odd = summarize_ms([5000.0, 3000.0, 4000.0, 2000.0, 3840.0])
+assert_eq(odd.median_ms, 3840.0)
+assert_eq(odd.min_ms, 2000.0)
+assert_eq(odd.max_ms, 5000.0)
+assert_eq(odd.trials, 5)
+
+even = summarize_ms([1000.0, 2000.0, 3000.0, 4000.0])
+assert_eq(even.median_ms, 2500.0)
+
+assert_eq(detector_count(), count(builtin_rules()) + 1)
+assert_eq(detector_count() > 0, true)
+
+doc = {
+    version: "0.1.0",
+    mode: "benchmark",
+    corpus: "./benchmark-corpus",
+    warmup: 1,
+    regex_rules: count(builtin_rules()),
+    entropy_detector: 1,
+    detectors: detector_count(),
+    files_discovered: 25000,
+    files_scanned: 25000,
+    files_skipped: 0,
+    bytes: 1_720_000_000,
+    findings: 42,
+    scan: {
+        trials: 5,
+        elapsed_ms_median: 3840.0,
+        elapsed_ms_mean: 3900.0,
+        elapsed_ms_min: 3710.0,
+        elapsed_ms_max: 4020.0,
+        samples_ms: [3840.0],
+        throughput_mb_s: mb_per_s(1_720_000_000, 3840.0),
+        findings_per_s: per_second(42, 3840.0)
+    },
+    analyze: {
+        trials: 5,
+        elapsed_ms_median: 1120.0,
+        elapsed_ms_mean: 1120.0,
+        elapsed_ms_min: 1100.0,
+        elapsed_ms_max: 1150.0,
+        samples_ms: [1120.0],
+        throughput_mb_s: mb_per_s(1_720_000_000, 1120.0),
+        findings_per_s: per_second(42, 1120.0)
+    },
+    host: {os: "test", arch: "test", cpu_count: 8, program: "j2"}
+}
+
+text = format_benchmark_report(doc)
+assert_eq(contains(text, "SafeShare benchmark"), true)
+assert_eq(contains(text, "25,000"), true)
+assert_eq(contains(text, "1.72 GB"), true)
+assert_eq(contains(text, "3.84 s"), true)
+assert_eq(contains(text, "MB/s"), true)
+assert_eq(contains(text, "Findings/s:"), true)
+assert_eq(contains(text, "Analyze:"), true)
+assert_eq(contains(text, "j2 run"), true)
+assert_eq(contains(text, "j2 build"), true)
+
+js = json.stringify(doc)
+assert_eq(contains(js, "AKIA"), false)
+assert_eq(contains(js, "throughput_mb_s"), true)
+assert_eq(contains(js, "samples_ms"), true)
+
+none = findings_rate_line(0, 3840.0)
+assert_eq(contains(none, "n/a"), true)
+
+bcmd = parse_command(["safeshare.j2", "benchmark", "./benchmark-corpus"])
+assert_eq(bcmd.ok, true)
+assert_eq(bcmd.command, "benchmark")
+assert_eq(bcmd.path, "./benchmark-corpus")
+
+assert_eq(parse_positive_int_flag(["--trials", "7"], "--trials", 5), 7)
+assert_eq(parse_positive_int_flag(["--trials", "nope"], "--trials", 5), 5)
+assert_eq(clamp_int(100, 1, 30), 30)
+assert_eq(clamp_int(0, 1, 30), 1)
+
+print("benchmark_test ok")

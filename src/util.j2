@@ -1,0 +1,206 @@
+# Path helpers and skip lists. Pure: no filesystem calls.
+
+DEFAULT_MAX_TEXT_BYTES = 1_000_000
+
+SKIP_DIR_NAMES = [
+    ".",
+    "..",
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "target",
+    "out",
+    ".next",
+    ".nuxt",
+    ".output",
+    ".turbo",
+    ".cache",
+    ".gradle",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+    "coverage",
+    "vendor",
+    "bower_components",
+    "obj"
+]
+
+func join_path(root, name) = {
+    if text.ends_with(root, "/") or text.ends_with(root, "\\") {
+        give root + name
+    }
+    give root + "/" + name
+}
+
+func trim_slash(path) = {
+    n = len(path)
+    if n > 1 and (path[n - 1] == "/" or path[n - 1] == "\\") {
+        give slice(path, 0, n - 1)
+    }
+    give path
+}
+
+func normalize_rel(path) = trim_slash(text.replace(path, "\\", "/"))
+
+func basename(path) = {
+    p = normalize_rel(path)
+    i = text.rfind(p, "/")
+    if i == null {
+        give p
+    }
+    give slice(p, i + 1, len(p))
+}
+
+func dirname(path) = {
+    p = normalize_rel(path)
+    i = text.rfind(p, "/")
+    if i == null {
+        give "."
+    }
+    if i == 0 {
+        give "/"
+    }
+    give slice(p, 0, i)
+}
+
+func should_skip_name(name) = contains(SKIP_DIR_NAMES, lower(name))
+
+func canonical_path_key(p) = {
+    s = lower(normalize_rel(p))
+    if text.starts_with(s, "./") {
+        give slice(s, 2, len(s))
+    }
+    give s
+}
+
+func is_absolute_path(p) = {
+    s = normalize_rel(p)
+    if s == "" {
+        give false
+    }
+    if text.starts_with(s, "/") {
+        give true
+    }
+    if len(s) >= 2 and s[1] == ":" {
+        give true
+    }
+    give false
+}
+
+# dest/child containment using string prefix only (no realpath / symlink follow).
+func path_is_inside(parent, child) = {
+    p = canonical_path_key(parent)
+    c = canonical_path_key(child)
+    if p == "." or p == "" {
+        give not is_absolute_path(child)
+    }
+    if c == p {
+        give true
+    }
+    give text.starts_with(c, p + "/")
+}
+
+# Relative output names must stay under dest: no .., no absolute, no empty segments.
+func rel_is_safe(rel) = {
+    p = normalize_rel(rel)
+    if p == "" or p == "." or p == ".." {
+        give false
+    }
+    if is_absolute_path(p) {
+        give false
+    }
+    if text.starts_with(p, "../") or text.ends_with(p, "/..") {
+        give false
+    }
+    for part in split(p, "/") {
+        if part == "" or part == "." or part == ".." {
+            give false
+        }
+    }
+    give true
+}
+
+func safe_dest_join(dest, rel) = {
+    if not rel_is_safe(rel) {
+        give ""
+    }
+    out = join_path(dest, rel)
+    if not path_is_inside(dest, out) {
+        give ""
+    }
+    give out
+}
+
+# Dest must be a real folder name, not ".", "..", or a path that climbs.
+func dest_path_is_safe(dest) = {
+    p = canonical_path_key(dest)
+    if p == "" or p == "." or p == ".." {
+        give false
+    }
+    if text.starts_with(p, "../") or text.ends_with(p, "/..") {
+        give false
+    }
+    if text.find(p, "/../") != null {
+        give false
+    }
+    for part in split(p, "/") {
+        if part == ".." {
+            give false
+        }
+    }
+    give true
+}
+
+func rel_path(root, path) = {
+    r = trim_slash(root)
+    if path == r or path == root {
+        give path
+    }
+    prefix_a = r + "/"
+    prefix_b = r + "\\"
+    if text.starts_with(path, prefix_a) {
+        give slice(path, len(prefix_a), len(path))
+    }
+    if text.starts_with(path, prefix_b) {
+        give slice(path, len(prefix_b), len(path))
+    }
+    give path
+}
+
+func has_binary_extension(path) = {
+    p = lower(path)
+    if text.ends_with(p, ".png") or text.ends_with(p, ".jpg") or text.ends_with(p, ".jpeg") { give true }
+    if text.ends_with(p, ".gif") or text.ends_with(p, ".webp") or text.ends_with(p, ".ico") { give true }
+    if text.ends_with(p, ".pdf") or text.ends_with(p, ".zip") or text.ends_with(p, ".gz") { give true }
+    if text.ends_with(p, ".tgz") or text.ends_with(p, ".bz2") or text.ends_with(p, ".xz") { give true }
+    if text.ends_with(p, ".woff") or text.ends_with(p, ".woff2") or text.ends_with(p, ".ttf") { give true }
+    if text.ends_with(p, ".otf") or text.ends_with(p, ".eot") { give true }
+    if text.ends_with(p, ".exe") or text.ends_with(p, ".dll") or text.ends_with(p, ".so") { give true }
+    if text.ends_with(p, ".dylib") or text.ends_with(p, ".class") or text.ends_with(p, ".pyc") { give true }
+    if text.ends_with(p, ".pyo") or text.ends_with(p, ".o") or text.ends_with(p, ".a") { give true }
+    if text.ends_with(p, ".wasm") or text.ends_with(p, ".bin") { give true }
+    if text.ends_with(p, ".mp3") or text.ends_with(p, ".mp4") or text.ends_with(p, ".mov") { give true }
+    if text.ends_with(p, ".avi") or text.ends_with(p, ".webm") or text.ends_with(p, ".sqlite") { give true }
+    if text.ends_with(p, ".sqlite3") or text.ends_with(p, ".jar") or text.ends_with(p, ".7z") { give true }
+    give false
+}
+
+# NUL bytes mean the file is not text. J2 string literals cannot write \0,
+# so callers that need a fixture should use text.from_bytes.
+func looks_like_binary(content) = contains(text.bytes(content), 0)
+
+func should_skip_size(size, max_bytes) = size > max_bytes
+
+func clamp_int(n, lo, hi) = {
+    if n < lo {
+        give lo
+    }
+    if n > hi {
+        give hi
+    }
+    give n
+}

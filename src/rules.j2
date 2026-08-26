@@ -1,0 +1,329 @@
+import "finding.j2"
+import "entropy.j2"
+
+# Table-driven detectors. Structured prefixes (AKIA, ghp_, AIza, PEM) are
+# specific. sk-, JWT, Bearer, and name=value rules are heuristic — the
+# description says so. Adding a rule is appending a map.
+
+# risky_config applies to dotenv / YAML / JSON / Python / JS / TS / Docker paths.
+CONFIG_APPLIES = "(?i)(\\.(env|ya?ml|json|jsonc|py|js|jsx|mjs|cjs|ts|tsx|toml|ini|cfg|conf|properties)$|Dockerfile|docker-compose|\\.env)"
+
+func builtin_rules() = [
+    {
+        id: "aws_access_key_id",
+        name: "AWS access key id",
+        category: "secret",
+        severity: Severity::critical(),
+        applies: "*",
+        pattern: "\\bAKIA[0-9A-Z]{16}\\b",
+        description: "Matches the published AKIA + 16 uppercase alphanumeric shape of an AWS access key id. Presence of the shape is not proof the key is live",
+        recommendation: "Disable the key in IAM, rotate replacements, and load ids from a secret store or environment",
+        placeholders: false,
+        min_len: 20
+    },
+    {
+        id: "github_token",
+        name: "GitHub token",
+        category: "secret",
+        severity: Severity::critical(),
+        applies: "*",
+        pattern: "\\b(gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,})\\b",
+        description: "Matches documented GitHub token prefixes: ghp_/gho_/ghu_/ghs_/ghr_ (36-char body) or github_pat_ (fine-grained)",
+        recommendation: "Revoke the token in GitHub settings and issue a new one that is never committed",
+        placeholders: false,
+        min_len: 36
+    },
+    {
+        id: "openai_style_api_key",
+        name: "OpenAI-style API key",
+        category: "secret",
+        severity: Severity::high(),
+        applies: "*",
+        pattern: "\\b(sk-proj-[A-Za-z0-9_-]{32,}|sk-[A-Za-z0-9]{32,})\\b",
+        description: "Heuristic: sk- or sk-proj- plus a long token. Other products use similar prefixes; this is not a guarantee it is an OpenAI key",
+        recommendation: "If the value is a real key, revoke it at the provider and inject it at runtime",
+        placeholders: true,
+        min_len: 32
+    },
+    {
+        id: "google_api_key",
+        name: "Google/Gemini-style API key",
+        category: "secret",
+        severity: Severity::high(),
+        applies: "*",
+        pattern: "\\bAIza[0-9A-Za-z_-]{35}\\b",
+        description: "Heuristic: AIza plus 35 characters, a common Google API key shape. Not every AIza string is a live Google or Gemini key",
+        recommendation: "Restrict or delete the key in Google Cloud and stop committing it",
+        placeholders: false,
+        min_len: 39
+    },
+    {
+        id: "jwt_token",
+        name: "JWT-shaped token",
+        category: "secret",
+        severity: Severity::high(),
+        applies: "*",
+        pattern: "\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\b",
+        description: "Heuristic: three base64url segments starting with eyJ (typical JWT header). No signature is verified",
+        recommendation: "Treat it as a live session or API credential: revoke it and keep JWTs out of source",
+        placeholders: false,
+        min_len: 30
+    },
+    {
+        id: "bearer_token",
+        name: "Bearer token",
+        category: "credential",
+        severity: Severity::high(),
+        applies: "*",
+        pattern: "(?i)(?:^|[^A-Za-z])Bearer\\s+([A-Za-z0-9._\\-+/=]{24,})",
+        description: "Heuristic: HTTP Bearer scheme followed by a long token-like string. The token type is not identified",
+        recommendation: "Rotate the credential and use a header or secret store instead of source files",
+        placeholders: true,
+        min_len: 24
+    },
+    {
+        id: "pem_private_key",
+        name: "PEM private key",
+        category: "secret",
+        severity: Severity::critical(),
+        applies: "*",
+        pattern: "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+        description: "PEM header for a private key (RSA, EC, OPENSSH, or generic). Public keys and certificates do not match",
+        recommendation: "Do not share this file. Keep keys outside the repo and ignore the path",
+        placeholders: false,
+        min_len: 0
+    },
+    {
+        id: "database_url_credentials",
+        name: "Database URL with credentials",
+        category: "credential",
+        severity: Severity::critical(),
+        applies: "*",
+        pattern: "(?i)\\b(postgres(?:ql)?|mysql|mariadb|mongodb(?:\\+srv)?|redis|rediss|amqp|amqps|mssql|sqlserver)://[^\\s:/@]+:[^\\s@/]+@",
+        description: "Database URL whose userinfo includes a password (scheme://user:pass@host). URLs without a password do not match",
+        recommendation: "Rotate the database password and pass the URL through the environment",
+        placeholders: true,
+        min_len: 12
+    },
+    {
+        id: "generic_password",
+        name: "Generic password assignment",
+        category: "credential",
+        severity: Severity::high(),
+        applies: "*",
+        pattern: "(?i)\\b(password|passwd|pwd)\\s*[=:]\\s*[\"']?([^\\s\"'#;]+)",
+        description: "Heuristic: a password-like name assigned a literal. Short values and placeholders are ignored",
+        recommendation: "Remove the literal and load the password from the environment or a secret manager",
+        placeholders: true,
+        min_len: 8
+    },
+    {
+        id: "generic_api_key",
+        name: "Generic API key assignment",
+        category: "credential",
+        severity: Severity::high(),
+        applies: "*",
+        pattern: "(?i)\\b(api[_-]?key|apikey)\\s*[=:]\\s*[\"']?([^\\s\"'#;]+)",
+        description: "Heuristic: api_key / apiKey / API_KEY (and similar) assigned a literal. Not bound to one vendor",
+        recommendation: "Rotate the key if it was real, and inject it at runtime instead of committing it",
+        placeholders: true,
+        min_len: 8
+    },
+    {
+        id: "generic_secret_assignment",
+        name: "Secret or token assignment",
+        category: "credential",
+        severity: Severity::high(),
+        applies: "*",
+        pattern: "(?i)\\b(client_secret|access_token|auth_token|secret|token)\\s*[=:]\\s*[\"']?([^\\s\"'#;]+)",
+        description: "Heuristic: secret / token / access_token / client_secret assigned a long literal. Booleans and tiny values are ignored",
+        recommendation: "Move the value to a secret manager or environment variable",
+        placeholders: true,
+        min_len: 12
+    },
+    {
+        id: "debug_enabled",
+        name: "Debug mode enabled",
+        category: "risky_config",
+        severity: Severity::low(),
+        applies: CONFIG_APPLIES,
+        pattern: "(?i)[\"']?\\bDEBUG\\b[\"']?\\s*[=:]\\s*[\"']?(?:true|yes|on|1)[\"']?",
+        description: "DEBUG appears to be enabled. That is common in local development and is not a vulnerability by itself, but it can expose internals if this configuration is used in a shared or production setting",
+        recommendation: "Keep debug off in anything that is deployed or shared, or load the flag from the environment so local and production configs stay distinct",
+        placeholders: false,
+        min_len: 0
+    },
+    {
+        id: "node_env_development",
+        name: "NODE_ENV=development",
+        category: "risky_config",
+        severity: Severity::low(),
+        applies: CONFIG_APPLIES,
+        pattern: "(?i)[\"']?\\bNODE_ENV\\b[\"']?\\s*[=:]\\s*[\"']?development[\"']?",
+        description: "NODE_ENV is set to development. That is expected on a workstation; it is only risky if this is the file a deployed service actually reads",
+        recommendation: "Use production (or omit the override) in deployed environments, and keep development values out of shared images",
+        placeholders: false,
+        min_len: 0
+    },
+    {
+        id: "cors_wildcard",
+        name: "CORS wildcard origin",
+        category: "risky_config",
+        severity: Severity::medium(),
+        applies: CONFIG_APPLIES,
+        pattern: "(?i)[\"']?\\b(?:CORS|Access-Control-Allow-Origin)\\b[\"']?\\s*[=:]\\s*[\"']?\\*[\"']?",
+        description: "CORS (or Access-Control-Allow-Origin) is set to *. Browsers will allow any origin to read responses. Confirm this is intentional and not copied into production",
+        recommendation: "List the origins you actually need, or keep the wildcard only in local development config",
+        placeholders: false,
+        min_len: 0
+    },
+    {
+        id: "tls_verification_disabled",
+        name: "TLS verification disabled",
+        category: "risky_config",
+        severity: Severity::high(),
+        applies: CONFIG_APPLIES,
+        pattern: "(?i)[\"']?\\b(?:verify_ssl|verify_tls|ssl_verify|tls_verify|rejectUnauthorized)\\b[\"']?\\s*[=:]\\s*[\"']?(?:false|no|off|0)[\"']?",
+        description: "TLS/SSL certificate verification appears to be turned off. That can allow interception of traffic. Confirm it is limited to local or tightly controlled environments",
+        recommendation: "Enable verification in shared and production configs; if you must talk to an internal CA, trust that CA rather than disabling checks",
+        placeholders: false,
+        min_len: 0
+    },
+    {
+        id: "authentication_disabled",
+        name: "Authentication disabled",
+        category: "risky_config",
+        severity: Severity::high(),
+        applies: CONFIG_APPLIES,
+        pattern: "(?i)(?:[\"']?\\b(?:authentication|auth_enabled|enable_auth|require_auth)\\b[\"']?\\s*[=:]\\s*[\"']?(?:false|no|off|0)[\"']?|[\"']?\\b(?:auth_disabled|authdisabled|disable_auth|disableauth|skip_auth)\\b[\"']?\\s*[=:]\\s*[\"']?(?:true|yes|on|1)[\"']?)",
+        description: "Authentication appears to be disabled. That may be intentional for local development; it is dangerous if this configuration is used for a reachable service",
+        recommendation: "Turn authentication on for any shared or production deployment, or isolate this config so it cannot be used there",
+        placeholders: false,
+        min_len: 0
+    }
+]
+
+func rule_by_id(id) = {
+    for r in builtin_rules() {
+        if r.id == id {
+            give r
+        }
+    }
+    assert false, fmt("unknown rule id: {}", id)
+}
+
+func rule_applies(rule, path) = {
+    if rule.applies == "*" or rule.applies == "" {
+        give true
+    }
+    give regex.match(rule.applies, path)
+}
+
+func strip_quotes(s) = {
+    n = len(s)
+    if n >= 2 {
+        a = s[0]
+        b = s[n - 1]
+        if a == b and (a == "\"" or a == "'") {
+            give slice(s, 1, n - 1)
+        }
+    }
+    give s
+}
+
+func looks_like_placeholder(value) = {
+    v = lower(trim(value))
+    if v == "" {
+        give true
+    }
+    if v == "password" or v == "secret" or v == "changeme" or v == "placeholder" {
+        give true
+    }
+    if v == "your_password" or v == "your_api_key" or v == "your-token" or v == "example" {
+        give true
+    }
+    if v == "null" or v == "none" or v == "todo" or v == "apikey" or v == "token" {
+        give true
+    }
+    if v == "true" or v == "false" or v == "undefined" or v == "redacted" or v == "dummy" {
+        give true
+    }
+    if text.is_digit(v) {
+        give true
+    }
+    if text.starts_with(v, "${") or text.starts_with(v, "{{") or text.starts_with(v, "<") {
+        give true
+    }
+    give false
+}
+
+func secret_from_match(pattern, content, m) = {
+    rest = slice(content, m.start, len(content))
+    g = regex.groups(pattern, rest)
+    if type(g) == "seq" and count(g) > 0 {
+        give strip_quotes(g[count(g) - 1])
+    }
+    give strip_quotes(m.text)
+}
+
+func match_to_findings(rule, path, content, m) = {
+    raw = secret_from_match(rule.pattern, content, m)
+    if rule.min_len > 0 and len(raw) < rule.min_len {
+        give []
+    }
+    if rule.placeholders and looks_like_placeholder(raw) {
+        give []
+    }
+    loc = line_column_at(content, m.start)
+    if rule.category == "risky_config" {
+        evidence = trim(m.text)
+        give [make_config_finding({
+            rule_id: rule.id,
+            severity: rule.severity,
+            file: path,
+            line: loc.line,
+            column: loc.column,
+            reason: fmt("Setting: {}\n{}", evidence, rule.description),
+            recommendation: rule.recommendation
+        }, evidence)]
+    }
+    give [make_finding({
+        rule_id: rule.id,
+        severity: rule.severity,
+        file: path,
+        line: loc.line,
+        column: loc.column,
+        category: rule.category,
+        message: rule.name,
+        reason: rule.description,
+        recommendation: rule.recommendation
+    }, raw)]
+}
+
+func matches_to_findings(rule, path, content) = func(m) = match_to_findings(rule, path, content, m)
+
+# Independent per match, then concat. regex.find_all itself stays a library call.
+func run_rule(rule, path, content) = {
+    if not rule_applies(rule, path) {
+        give []
+    }
+    give flatten(regex.find_all(rule.pattern, content) >> matches_to_findings(rule, path, content))
+}
+
+func apply_rule(rule, snapshot) = run_rule(rule, snapshot.path, snapshot.content)
+
+func rule_on_content(path, content) = func(rule) = run_rule(rule, path, content)
+
+# Independent per rule. Flatten is associative concat of per-rule lists.
+func analyze_content_with(path, content, rules) =
+    flatten(rules >> rule_on_content(path, content))
+
+# Regex table and entropy do not share mutable state. Bind both, then concat
+# so a native build can treat them as independent pure calls.
+func analyze_content(path, content) = {
+    from_rules = analyze_content_with(path, content, builtin_rules())
+    from_entropy = detect_high_entropy(path, content)
+    give from_rules + from_entropy
+}
+
+func run_one(id, path, content) = analyze_content_with(path, content, [rule_by_id(id)])

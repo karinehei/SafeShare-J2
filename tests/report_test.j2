@@ -1,0 +1,113 @@
+import "../src/report.j2"
+
+raw = "sk-1234567890abcdefghijkl"
+hit = make_finding({
+    rule_id: "openai_style_api_key",
+    severity: Severity::critical(),
+    file: ".env",
+    line: 3,
+    column: 1,
+    category: "secret",
+    message: "OpenAI API key detected",
+    reason: "heuristic",
+    recommendation: "Remove the credential from the file and rotate it."
+}, raw)
+
+db = make_finding({
+    rule_id: "database_url_credentials",
+    severity: Severity::high(),
+    file: "config/database.env",
+    line: 8,
+    column: 1,
+    category: "credential",
+    message: "Database URL contains credentials",
+    reason: "userinfo",
+    recommendation: "Rotate the database password"
+}, "postgres://ada:hunter2_secret@db")
+
+low = make_config_finding({
+    rule_id: "debug_enabled",
+    severity: Severity::low(),
+    file: "app.env",
+    line: 1,
+    column: 1,
+    reason: "DEBUG",
+    recommendation: "Keep debug off when sharing"
+}, "DEBUG=true")
+
+result = {
+    files_discovered: 465,
+    files_scanned: 428,
+    files_skipped: 37,
+    bytes_scanned: 0,
+    findings_count: 3,
+    findings: [low, db, hit],
+    paths: [".env", "config/database.env", "app.env"]
+}
+
+report = format_scan_report(result, "./demo-project", false)
+
+assert_eq(contains(report, "SafeShare J2"), true)
+assert_eq(contains(report, "Scanning: ./demo-project"), true)
+assert_eq(contains(report, "CRITICAL  .env:3"), true)
+assert_eq(contains(report, "OpenAI API key detected"), true)
+assert_eq(contains(report, "HIGH      config/database.env:8"), true)
+assert_eq(contains(report, "Database URL contains credentials"), true)
+assert_eq(contains(report, "Recommendation:"), true)
+assert_eq(contains(report, "Files scanned:"), true)
+assert_eq(contains(report, "428"), true)
+assert_eq(contains(report, "Files skipped:"), true)
+assert_eq(contains(report, "37"), true)
+assert_eq(contains(report, "Critical:"), true)
+assert_eq(contains(report, "High:"), true)
+assert_eq(contains(report, "Risk score:"), true)
+assert_eq(contains(report, "/ 100"), true)
+assert_eq(contains(report, "Assessment:"), true)
+assert_eq(contains(report, "Safe to share:"), true)
+assert_eq(contains(report, "NO"), true)
+
+# Critical/high before low.
+crit_at = text.find(report, "CRITICAL")
+high_at = text.find(report, "HIGH")
+low_at = text.find(report, "LOW")
+assert_eq(crit_at != null, true)
+assert_eq(high_at != null, true)
+assert_eq(low_at != null, true)
+assert_eq(crit_at < high_at, true)
+assert_eq(high_at < low_at, true)
+
+# Never reprint a complete secret.
+assert_eq(contains(report, raw), false)
+assert_eq(contains(report, "hunter2_secret"), false)
+assert_eq(contains(report, hit.masked_value), true)
+assert_eq(contains(report, "sk-1"), true)
+
+# Clean scan: no finding blocks, no YES, still a score.
+clean_result = {
+    files_discovered: 10,
+    files_scanned: 10,
+    files_skipped: 0,
+    bytes_scanned: 0,
+    findings_count: 0,
+    findings: [],
+    paths: ["readme.md"]
+}
+clean = format_scan_report(clean_result, "./demo-project", false)
+assert_eq(contains(clean, "No findings."), true)
+assert_eq(contains(clean, "does not guarantee"), true)
+assert_eq(contains(clean, "CRITICAL"), false)
+assert_eq(contains(clean, "Safe to share: YES"), false)
+assert_eq(contains(clean, "not guaranteed"), true)
+assert_eq(contains(clean, "Risk score:"), true)
+assert_eq(contains(clean, "LOW RISK"), true)
+assert_eq(contains(clean, "0 / 100"), true)
+
+# AI-share marks assistant-facing paths without a second secret dump.
+ai = format_scan_report(result, "./demo-project", true)
+assert_eq(contains(ai, "Mode: AI-share"), true)
+assert_eq(contains(ai, "commonly pasted into AI assistant chats"), true)
+assert_eq(contains(ai, raw), false)
+
+print("report_test ok")
+print("")
+print(report)

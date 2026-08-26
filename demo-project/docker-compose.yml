@@ -1,0 +1,12 @@
+# SafeShare demo — local-only compose.
+# DEBUG is on so the scan can show a LOW config finding.
+# No credentials live in this file.
+
+services:
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    environment:
+      DEBUG: "true"
+      PORT: "3000"
+      DATABASE_URL: "postgres://127.0.0.1:5432/safeshare_demo"

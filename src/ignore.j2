@@ -1,0 +1,136 @@
+import "util.j2"
+
+# .safeshareignore — small predictable subset, not Git-compatible.
+#
+# Supported:
+#   blank lines and # comments
+#   trailing /  → directory only (node_modules/, dist/, generated/)
+#   leading /   → match from the scan root only
+#   one *       → glob inside a single path segment (*.min.js)
+#   a bare name → that file or directory name at any depth
+#
+# Not supported (ignored as literal text if you write them):
+#   **, !, character classes [], escaping, anchored **/, gitignore
+#   precedence / last-match-wins negation
+#
+# Merge is a union, in order:
+#   1. built-in directory defaults
+#   2. .safeshareignore at the scan root
+#   3. extra patterns (command-line --exclude)
+
+func parse_ignore_line(line) = {
+    s = trim(line)
+    if s == "" {
+        give null
+    }
+    if text.starts_with(s, "#") {
+        give null
+    }
+    dir_only := false
+    if text.ends_with(s, "/") {
+        dir_only = true
+        s = slice(s, 0, len(s) - 1)
+    }
+    rooted := false
+    if text.starts_with(s, "/") {
+        rooted = true
+        s = slice(s, 1, len(s))
+    }
+    if s == "" {
+        give null
+    }
+    give {pattern: s, dir_only: dir_only, rooted: rooted}
+}
+
+func parse_ignore_line_cr(line) = parse_ignore_line(text.replace(line, "\r", ""))
+
+func parse_ignore_rules(body) = split(body, "\n") >> parse_ignore_line_cr ? (_ != null)
+
+func skip_dir_ignore_name(name) = name != "." and name != ".."
+
+func ignore_from_skip_dir(name) = parse_ignore_line(name + "/")
+
+func builtin_ignore_rules() =
+    ((SKIP_DIR_NAMES ? skip_dir_ignore_name) >> ignore_from_skip_dir) + [
+        parse_ignore_line("SANITIZATION_REPORT.json"),
+        parse_ignore_line("SAFESHARE_GROUND_TRUTH.json")
+    ]
+
+func merge_ignore_rules(file_text, extra) =
+    builtin_ignore_rules() + parse_ignore_rules(file_text) + parse_ignore_rules(join(extra, "\n"))
+
+# One *: the matched middle must not contain "/".
+func star_match(pat, s) = {
+    p = lower(pat)
+    t = lower(s)
+    star = text.find(p, "*")
+    if star == null {
+        give p == t
+    }
+    rest = slice(p, star + 1, len(p))
+    if contains(rest, "*") {
+        give false
+    }
+    prefix = slice(p, 0, star)
+    if not text.starts_with(t, prefix) {
+        give false
+    }
+    if not text.ends_with(t, rest) {
+        give false
+    }
+    if len(prefix) + len(rest) > len(t) {
+        give false
+    }
+    mid = slice(t, len(prefix), len(t) - len(rest))
+    give not contains(mid, "/")
+}
+
+func matches_rule(rule, rel, name, is_dir) = {
+    if rule.dir_only and not is_dir {
+        give false
+    }
+    pat = rule.pattern
+    if rule.rooted or contains(pat, "/") {
+        give star_match(pat, rel)
+    }
+    give star_match(pat, name)
+}
+
+func path_ignored(rules, rel, name, is_dir) = {
+    reln = normalize_rel(rel)
+    nam := name
+    if nam == "" {
+        nam = basename(reln)
+    }
+    if reln == "" or reln == "." {
+        give false
+    }
+    for rule in rules {
+        if matches_rule(rule, reln, nam, is_dir) {
+            give true
+        }
+    }
+    segs := []
+    for part in split(reln, "/") {
+        if part != "" {
+            push(segs, part)
+        }
+    }
+    acc := ""
+    i := 0
+    last = count(segs) - 1
+    repeat i < last {
+        if acc == "" {
+            acc = segs[i]
+        } else {
+            acc = acc + "/" + segs[i]
+        }
+        for rule in rules {
+            if matches_rule(rule, acc, segs[i], true) {
+                give true
+            }
+        }
+        i += 1
+    }
+    give false
+}

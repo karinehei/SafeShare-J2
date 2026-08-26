@@ -1,0 +1,64 @@
+import "cli.j2"
+import "scanner.j2"
+import "report.j2"
+import "sanitize.j2"
+import "benchmark.j2"
+import "corpus.j2"
+
+func run_safeshare() = {
+    cmd = parse_command(proc.argv())
+    if not cmd.ok {
+        print(cmd.message)
+        proc.exit(2)
+    }
+
+    if cmd.command == "sanitize" {
+        sanitize_tree(cmd.path, cmd.output)
+        give
+    }
+
+    if cmd.command == "generate-corpus" {
+        generate_corpus(cmd.path)
+        give
+    }
+
+    if cmd.command == "evaluate" or cmd.command == "score" {
+        evaluate_corpus(cmd.path, cmd.max_bytes, cmd.excludes, cmd.json_out)
+        give
+    }
+
+    if cmd.command == "benchmark" {
+        run_benchmark(cmd.path, cmd.max_bytes, cmd.excludes, cmd.json_out)
+        give
+    }
+
+    run_scan(cmd.path, cmd.max_bytes, cmd.excludes, cmd.ai_share, cmd.json_out)
+}
+
+func run_scan(root, max_bytes, extra_excludes, ai_share, json_out) = {
+    try {
+        if not fs.exists(root) {
+            print(fmt("path not found: {}", root))
+            proc.exit(2)
+        }
+    } else RuntimeError {
+        print(fmt("cannot access path: {}", root))
+        proc.exit(2)
+    }
+
+    loaded = load_tree(root, max_bytes, extra_excludes)
+    result = complete_scan(loaded)
+    print_scan_result(result, root, ai_share)
+    if json_out != "" {
+        try {
+            fs.write_file(json_out, scan_report_json(result))
+            print("")
+            print(fmt("Wrote JSON report: {}", json_out))
+        } else RuntimeError {
+            print(fmt("could not write JSON report: {}", json_out))
+            proc.exit(2)
+        }
+    }
+}
+
+run_safeshare()

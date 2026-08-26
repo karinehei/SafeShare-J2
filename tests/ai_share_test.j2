@@ -1,0 +1,99 @@
+import "../src/ai_share.j2"
+import "../src/cli.j2"
+
+assert_eq(is_ai_share_path(".env"), true)
+assert_eq(is_ai_share_path(".env.local"), true)
+assert_eq(is_ai_share_path(".env.production"), true)
+assert_eq(is_ai_share_path("AGENTS.md"), true)
+assert_eq(is_ai_share_path("CLAUDE.md"), true)
+assert_eq(is_ai_share_path("GEMINI.md"), true)
+assert_eq(is_ai_share_path("README.md"), true)
+assert_eq(is_ai_share_path("docs/notes.md"), true)
+assert_eq(is_ai_share_path(".cursor/rules.md"), true)
+assert_eq(is_ai_share_path(".github/workflows/ci.yml"), true)
+assert_eq(is_ai_share_path(".vscode/settings.json"), true)
+assert_eq(is_ai_share_path("package.json"), true)
+assert_eq(is_ai_share_path("docker-compose.yaml"), true)
+assert_eq(is_ai_share_path("Cargo.toml"), true)
+assert_eq(is_ai_share_path("prod.tfvars"), true)
+assert_eq(is_ai_share_path("src/app.ts"), false)
+assert_eq(is_ai_share_path("src/main.j2"), false)
+
+secret = make_finding({
+    rule_id: "aws_access_key_id",
+    severity: Severity::critical(),
+    file: ".env",
+    line: 2,
+    column: 1,
+    category: "secret",
+    message: "AWS access key id",
+    reason: "test",
+    recommendation: "rotate"
+}, "AKIAIOSFODNN7EXAMPLE")
+
+warn = make_config_finding({
+    rule_id: "debug_enabled",
+    severity: Severity::low(),
+    file: "app.env",
+    line: 1,
+    column: 1,
+    reason: "DEBUG appears enabled",
+    recommendation: "keep debug off when sharing"
+}, "DEBUG=true")
+
+other = make_finding({
+    rule_id: "generic_password",
+    severity: Severity::high(),
+    file: "src/app.ts",
+    line: 10,
+    column: 1,
+    category: "credential",
+    message: "Hard-coded password",
+    reason: "test",
+    recommendation: "remove"
+}, "hunter2_secret")
+
+assert_eq(is_blocking_finding(secret), true)
+assert_eq(is_blocking_finding(other), true)
+assert_eq(is_blocking_finding(warn), false)
+assert_eq(count_blocking([secret, warn, other]), 2)
+
+dirty = ai_share_assessment_text([secret, warn, other])
+assert_eq(contains(dirty, "Safe to share: NO"), true)
+assert_eq(contains(dirty, "Safe to share: YES"), false)
+assert_eq(contains(dirty, "Blocking findings: 2"), true)
+assert_eq(contains(dirty, "Warnings: 1"), true)
+assert_eq(contains(dirty, "remove or rotate detected credentials"), true)
+assert_eq(contains(dirty, "AKIAIOSFODNN7EXAMPLE"), false)
+
+clean = ai_share_assessment_text([])
+assert_eq(contains(clean, "Safe to share: YES"), false)
+assert_eq(contains(clean, "Safe to share: NO"), false)
+assert_eq(contains(clean, "No known blocking patterns detected."), true)
+assert_eq(contains(clean, "This does not guarantee the files contain no sensitive information."), true)
+assert_eq(contains(clean, "Blocking findings: 0"), true)
+
+warn_only = ai_share_assessment_text([warn])
+assert_eq(contains(warn_only, "No known blocking patterns detected."), true)
+assert_eq(contains(warn_only, "This does not guarantee the files contain no sensitive information."), true)
+assert_eq(contains(warn_only, "Safe to share: YES"), false)
+assert_eq(contains(warn_only, "inspect configuration findings"), true)
+
+ordered = sort_findings_ai([other, secret])
+assert_eq(ordered[0].file, ".env")
+assert_eq(ordered[1].file, "src/app.ts")
+
+files = join(ai_share_file_lines([".env", "src/app.ts", "README.md"]), "\n")
+assert_eq(contains(files, ".env"), true)
+assert_eq(contains(files, "README.md"), true)
+assert_eq(contains(files, "src/app.ts"), false)
+
+flagged = parse_command(["safeshare.j2", "scan", "./project", "--ai-share"])
+assert_eq(flagged.ok, true)
+assert_eq(flagged.path, "./project")
+assert_eq(flagged.ai_share, true)
+
+plain = parse_command(["safeshare.j2", "scan", "./project"])
+assert_eq(plain.ai_share, false)
+
+print("ai_share_test ok")

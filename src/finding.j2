@@ -1,0 +1,173 @@
+# SafeShare result model.
+# FileSnapshot holds source bytes during analysis.
+# Finding never stores a complete secret — only a mask and a SHA-256 fingerprint.
+
+FileSnapshot = class {
+    path = ""
+    content = ""
+}
+
+Severity = class {
+    name = "info"
+    rank = 1
+
+    ::critical() = Severity(name: "critical", rank: 5)
+    ::high() = Severity(name: "high", rank: 4)
+    ::medium() = Severity(name: "medium", rank: 3)
+    ::low() = Severity(name: "low", rank: 2)
+    ::info() = Severity(name: "info", rank: 1)
+}
+
+func severity_from_name(name) = {
+    if name == "critical" { give Severity::critical() }
+    if name == "high" { give Severity::high() }
+    if name == "medium" { give Severity::medium() }
+    if name == "low" { give Severity::low() }
+    if name == "info" { give Severity::info() }
+    assert false, fmt("unknown severity: {}", name)
+}
+
+# Keep a short prefix and suffix so a human can recognize the credential
+# type (sk-..., AKIA...). Never keep enough to reconstruct the secret:
+# at most 4 + 3 characters, and always at least one '*'. Length is preserved.
+func mask_keep(n) = {
+    if n <= 0 {
+        give {head: 0, tail: 0}
+    }
+    head = min(4, floor(n / 6))
+    tail = min(3, floor(n / 8))
+    if head + tail >= n {
+        give {head: 0, tail: 0}
+    }
+    give {head: head, tail: tail}
+}
+
+func mask_secret(raw) = {
+    n = len(raw)
+    if n == 0 {
+        give ""
+    }
+    k = mask_keep(n)
+    give slice(raw, 0, k.head) + text.repeat("*", n - k.head - k.tail) + slice(raw, n - k.tail, n)
+}
+
+# Same rule + same secret → same fingerprint, across files and scans.
+# Pure per finding: hash.sha256 of (rule_id, raw). No shared hasher, no batch
+# buffer, no threads. Native J2 may run independent make_finding calls together.
+func finding_fingerprint(rule_id, raw_value) = {
+    hash.sha256(rule_id + "\n" + raw_value)
+}
+
+Finding = class {
+    rule_id = ""
+    severity = null
+    file = ""
+    line = 0
+    column = 0
+    category = ""
+    message = ""
+    reason = ""
+    masked_value = ""
+    fingerprint = ""
+    recommendation = ""
+
+    to_text() = {
+        loc := fmt("{}:{}", file, line)
+        if column > 0 {
+            loc = fmt("{}:{}", loc, column)
+        }
+        lines := [
+            fmt("[{}] {}  {}", severity.name, rule_id, loc),
+            fmt("  {}", message)
+        ]
+        if reason != "" {
+            push(lines, fmt("  reason: {}", reason))
+        }
+        if masked_value != "" {
+            push(lines, fmt("  value: {}", masked_value))
+        }
+        if recommendation != "" {
+            push(lines, fmt("  fix: {}", recommendation))
+        }
+        if fingerprint != "" {
+            push(lines, fmt("  fingerprint: {}", fingerprint))
+        }
+        give join(lines, "\n")
+    }
+}
+
+# Configuration flags are not secrets: fingerprint the evidence, do not mask it
+# (masking "true" to "****" is noise, and the assignment is the finding).
+func make_config_finding(spec, evidence) = {
+    Finding(
+        rule_id: spec.rule_id,
+        severity: spec.severity,
+        file: spec.file,
+        line: spec.line,
+        column: spec.column,
+        category: "risky_config",
+        message: "Potentially risky configuration",
+        reason: spec.reason,
+        masked_value: "",
+        fingerprint: finding_fingerprint(spec.rule_id, evidence),
+        recommendation: spec.recommendation
+    )
+}
+
+# spec is location and wording. raw_value is hashed and masked, then dropped.
+func make_finding(spec, raw_value) = {
+    Finding(
+        rule_id: spec.rule_id,
+        severity: spec.severity,
+        file: spec.file,
+        line: spec.line,
+        column: spec.column,
+        category: spec.category,
+        message: spec.message,
+        reason: spec.reason,
+        masked_value: mask_secret(raw_value),
+        fingerprint: finding_fingerprint(spec.rule_id, raw_value),
+        recommendation: spec.recommendation
+    )
+}
+
+# Prefix scan: each index depends on previous newlines. Sequential on purpose.
+func line_column_at(content, index) = {
+    line := 1
+    col := 1
+    i := 0
+    n = len(content)
+    stop_at := index
+    if stop_at < 0 {
+        give {line: 0, column: 0}
+    }
+    if stop_at > n {
+        stop_at = n
+    }
+    repeat i < stop_at {
+        if content[i] == "\n" {
+            line += 1
+            col = 1
+        } else {
+            col += 1
+        }
+        i += 1
+    }
+    give {line: line, column: col}
+}
+
+# Higher severity first, then file, then line. For sort_by.
+func finding_cmp(a, b) = {
+    if a.severity.rank != b.severity.rank {
+        give b.severity.rank - a.severity.rank
+    }
+    if a.file != b.file {
+        if a.file < b.file {
+            give -1
+        }
+        give 1
+    }
+    give a.line - b.line
+}
+
+func sort_findings(findings) = sort_by(findings, finding_cmp)

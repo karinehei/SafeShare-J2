@@ -1,0 +1,297 @@
+import "scanner.j2"
+import "cli.j2"
+
+# Timed corpus scan. Numbers come from time.now / time.elapsed_ms and
+# from the scan result — never hard-coded. Native J2 may speed the
+# in-memory analyze phase; I/O stays serial.
+#
+# Method: 1 untimed warmup (default), then N timed trials. Headline
+# elapsed is the median. End-to-end includes load+analyze. Analyze
+# times complete_scan on already-loaded snapshots.
+
+DEFAULT_BENCH_TRIALS = 5
+DEFAULT_BENCH_WARMUP = 1
+MAX_BENCH_TRIALS = 30
+MAX_BENCH_WARMUP = 10
+BENCH_LABEL_WIDTH = 16
+BENCH_VALUE_WIDTH = 14
+
+func detector_count() = count(builtin_rules()) + 1
+
+func format_int_commas(n) = {
+    s = str(n)
+    if text.starts_with(s, "-") {
+        give "-" + format_int_commas_digits(slice(s, 1, len(s)))
+    }
+    give format_int_commas_digits(s)
+}
+
+func format_int_commas_digits(s) = {
+    out := ""
+    i := 0
+    n = len(s)
+    repeat i < n {
+        remaining = n - i
+        if i > 0 and remaining % 3 == 0 {
+            out = out + ","
+        }
+        out = out + s[i]
+        i += 1
+    }
+    give out
+}
+
+func format_fixed_2(x) = {
+    scaled = round(x * 100)
+    whole = floor(scaled / 100)
+    frac = scaled - whole * 100
+    if frac < 0 {
+        frac = 0 - frac
+    }
+    fs = str(frac)
+    if frac < 10 {
+        fs = "0" + fs
+    }
+    give str(whole) + "." + fs
+}
+
+func format_seconds(ms) = fmt("{} s", format_fixed_2(ms / 1000.0))
+
+func format_data_size(n) = {
+    if n >= 1_000_000_000 {
+        give fmt("{} GB", format_fixed_2(n / 1_000_000_000.0))
+    }
+    if n >= 1_000_000 {
+        give fmt("{} MB", format_fixed_2(n / 1_000_000.0))
+    }
+    if n >= 1_000 {
+        give fmt("{} KB", format_fixed_2(n / 1_000.0))
+    }
+    give fmt("{} B", str(n))
+}
+
+func mb_per_s(bytes, elapsed_ms) = {
+    if elapsed_ms <= 0 {
+        give 0.0
+    }
+    give (bytes / 1_000_000.0) / (elapsed_ms / 1000.0)
+}
+
+func per_second(count_n, elapsed_ms) = {
+    if elapsed_ms <= 0 {
+        give 0.0
+    }
+    give count_n / (elapsed_ms / 1000.0)
+}
+
+func median_ms(xs) = {
+    if count(xs) == 0 {
+        give 0.0
+    }
+    s = sort(xs)
+    n = count(s)
+    mid = floor(n / 2)
+    if n % 2 == 1 {
+        give s[mid]
+    }
+    give (s[mid - 1] + s[mid]) / 2.0
+}
+
+func mean_ms(xs) = {
+    if count(xs) == 0 {
+        give 0.0
+    }
+    give sum(xs) / count(xs)
+}
+
+func summarize_ms(samples) = {
+    give {
+        samples_ms: samples,
+        trials: count(samples),
+        median_ms: median_ms(samples),
+        mean_ms: mean_ms(samples),
+        min_ms: min(samples),
+        max_ms: max(samples)
+    }
+}
+
+func rate_block(bytes, findings, elapsed_ms) = {
+    mb = mb_per_s(bytes, elapsed_ms)
+    fps = per_second(findings, elapsed_ms)
+    give {
+        elapsed_ms: elapsed_ms,
+        elapsed_s: elapsed_ms / 1000.0,
+        throughput_mb_s: mb,
+        findings_per_s: fps
+    }
+}
+
+func bench_row(label, value) = {
+    lab = label
+    if len(lab) < BENCH_LABEL_WIDTH {
+        lab = lab + text.repeat(" ", BENCH_LABEL_WIDTH - len(lab))
+    }
+    give lab + text.pad_left(value, BENCH_VALUE_WIDTH)
+}
+
+func findings_rate_line(findings, elapsed_ms) = {
+    if findings <= 0 {
+        give bench_row("Findings/s:", "n/a")
+    }
+    give bench_row("Findings/s:", format_fixed_2(per_second(findings, elapsed_ms)))
+}
+
+func phase_document(summ, bytes, findings) = {
+    rates = rate_block(bytes, findings, summ.median_ms)
+    give {
+        trials: summ.trials,
+        elapsed_ms_median: summ.median_ms,
+        elapsed_ms_mean: summ.mean_ms,
+        elapsed_ms_min: summ.min_ms,
+        elapsed_ms_max: summ.max_ms,
+        samples_ms: summ.samples_ms,
+        throughput_mb_s: rates.throughput_mb_s,
+        findings_per_s: rates.findings_per_s
+    }
+}
+
+func benchmark_document(corpus, warmup, scan_summ, analyze_summ, loaded, result) = {
+    bytes = loaded.bytes_scanned
+    findings = result.findings_count
+    give {
+        version: "0.1.0",
+        mode: "benchmark",
+        corpus: corpus,
+        warmup: warmup,
+        regex_rules: count(builtin_rules()),
+        entropy_detector: 1,
+        detectors: detector_count(),
+        files_discovered: result.files_discovered,
+        files_scanned: result.files_scanned,
+        files_skipped: result.files_skipped,
+        bytes: bytes,
+        findings: findings,
+        scan: phase_document(scan_summ, bytes, findings),
+        analyze: phase_document(analyze_summ, bytes, findings),
+        host: {
+            os: sys.os(),
+            arch: sys.arch(),
+            cpu_count: sys.cpu_count(),
+            program: proc.argv()[0]
+        }
+    }
+}
+
+func format_benchmark_report(doc) = {
+    scan = doc.scan
+    analyze = doc.analyze
+    lines = [
+        "SafeShare benchmark",
+        "",
+        bench_row("Corpus:", doc.corpus),
+        bench_row("Files:", format_int_commas(doc.files_scanned)),
+        bench_row("Skipped:", format_int_commas(doc.files_skipped)),
+        bench_row("Data:", format_data_size(doc.bytes)),
+        bench_row("Rules:", format_int_commas(doc.detectors)),
+        bench_row("Findings:", format_int_commas(doc.findings)),
+        "",
+        bench_row("Elapsed:", format_seconds(scan.elapsed_ms_median)),
+        bench_row("Throughput:", fmt("{} MB/s", format_fixed_2(scan.throughput_mb_s))),
+        findings_rate_line(doc.findings, scan.elapsed_ms_median),
+        "",
+        bench_row("Analyze:", format_seconds(analyze.elapsed_ms_median)),
+        bench_row("Analyze MB/s:", fmt("{} MB/s", format_fixed_2(analyze.throughput_mb_s))),
+        "",
+        bench_row("Trials:", fmt("{} timed, {} warmup", str(scan.trials), str(doc.warmup))),
+        bench_row("Range:", fmt("{} … {}", format_seconds(scan.elapsed_ms_min), format_seconds(scan.elapsed_ms_max))),
+        bench_row("CPUs:", str(doc.host.cpu_count)),
+        "",
+        "Elapsed is the median end-to-end scan (load + analyze).",
+        "Analyze is in-memory complete_scan only — use that to compare",
+        "`j2 run` (interpreter) with `j2 build` (native) on the same corpus."
+    ]
+    give join(lines, "\n")
+}
+
+func one_end_to_end(root, max_bytes, excludes) = {
+    loaded = load_tree(root, max_bytes, excludes)
+    result = complete_scan(loaded)
+    give {loaded: loaded, result: result}
+}
+
+func run_end_to_end_trials(root, max_bytes, excludes, warmup, trials) = {
+    last := null
+    w := 0
+    repeat w < warmup {
+        last = one_end_to_end(root, max_bytes, excludes)
+        w += 1
+    }
+    samples := []
+    i := 0
+    repeat i < trials {
+        t = time.now()
+        last = one_end_to_end(root, max_bytes, excludes)
+        samples = samples + [time.elapsed_ms(t)]
+        i += 1
+    }
+    give {samples_ms: samples, last: last}
+}
+
+func run_analyze_trials(loaded, warmup, trials) = {
+    w := 0
+    repeat w < warmup {
+        complete_scan(loaded)
+        w += 1
+    }
+    samples := []
+    last := null
+    i := 0
+    repeat i < trials {
+        t = time.now()
+        last = complete_scan(loaded)
+        samples = samples + [time.elapsed_ms(t)]
+        i += 1
+    }
+    give {samples_ms: samples, last: last}
+}
+
+func run_benchmark(root, max_bytes, extra_excludes, json_out) = {
+    try {
+        if not fs.exists(root) {
+            print(fmt("path not found: {}", root))
+            proc.exit(2)
+        }
+    } else RuntimeError {
+        print("cannot access corpus path")
+        proc.exit(2)
+    }
+
+    argv = program_args(proc.argv())
+    trials = clamp_int(parse_positive_int_flag(argv, "--trials", DEFAULT_BENCH_TRIALS), 1, MAX_BENCH_TRIALS)
+    warmup = clamp_int(parse_positive_int_flag(argv, "--warmup", DEFAULT_BENCH_WARMUP), 0, MAX_BENCH_WARMUP)
+
+    e2e = run_end_to_end_trials(root, max_bytes, extra_excludes, warmup, trials)
+    if e2e.last == null {
+        print("benchmark: no timed trials ran")
+        proc.exit(2)
+    }
+    analyze = run_analyze_trials(e2e.last.loaded, 1, trials)
+    scan_summ = summarize_ms(e2e.samples_ms)
+    analyze_summ = summarize_ms(analyze.samples_ms)
+    doc = benchmark_document(root, warmup, scan_summ, analyze_summ, e2e.last.loaded, e2e.last.result)
+
+    print(format_benchmark_report(doc))
+    print("")
+    print(json.stringify_pretty(doc))
+
+    if json_out != "" {
+        try {
+            fs.write_file(json_out, json.stringify_pretty(doc))
+            print("")
+            print(fmt("Wrote {}", json_out))
+        } else RuntimeError {
+            print("could not write benchmark JSON")
+            proc.exit(2)
+        }
+    }
+}

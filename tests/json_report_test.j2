@@ -1,0 +1,97 @@
+import "../src/report.j2"
+import "../src/cli.j2"
+
+raw = "sk-1234567890abcdefghijkl"
+hit = make_finding({
+    rule_id: "openai_style_api_key",
+    severity: Severity::critical(),
+    file: ".env",
+    line: 3,
+    column: 1,
+    category: "secret",
+    message: "OpenAI API key detected",
+    reason: "heuristic",
+    recommendation: "Rotate the key"
+}, raw)
+
+later = make_finding({
+    rule_id: "generic_password",
+    severity: Severity::high(),
+    file: "src/app.ts",
+    line: 8,
+    column: 1,
+    category: "credential",
+    message: "Hard-coded password",
+    reason: "assignment",
+    recommendation: "remove"
+}, "hunter2_secret")
+
+result = {
+    files_discovered: 428,
+    files_scanned: 428,
+    files_skipped: 37,
+    bytes_scanned: 0,
+    findings_count: 2,
+    findings: [later, hit],
+    paths: [".env", "src/app.ts"]
+}
+
+doc = scan_report_document(result)
+assert_eq(doc.version, "0.1.0")
+assert_eq(doc.summary.files_scanned, 428)
+assert_eq(doc.summary.findings, 2)
+assert_eq(doc.summary.risk_score >= 50, true)
+assert_eq(doc.summary.assessment, "high")
+assert_eq(doc.summary.safe_to_share, false)
+assert_eq(count(doc.findings), 2)
+assert_eq(doc.findings[0].file, ".env")
+assert_eq(doc.findings[0].line, 3)
+assert_eq(doc.findings[0].severity, "critical")
+assert_eq(doc.findings[0].masked_value, hit.masked_value)
+assert_eq(doc.findings[0].fingerprint, hit.fingerprint)
+assert_eq(len(doc.findings[0].fingerprint), 64)
+assert_eq(doc.findings[1].file, "src/app.ts")
+
+text = scan_report_json(result)
+assert_eq(contains(text, raw), false)
+assert_eq(contains(text, "hunter2_secret"), false)
+assert_eq(contains(text, "masked_value"), true)
+assert_eq(contains(text, "fingerprint"), true)
+assert_eq(contains(text, hit.masked_value), true)
+
+# Valid JSON via the language encoder, not string assembly.
+parsed = json.parse(text)
+assert_eq(parsed.version, "0.1.0")
+assert_eq(parsed.summary.files_scanned, 428)
+assert_eq(parsed.summary.safe_to_share, false)
+assert_eq(parsed.findings[0].rule_id, "openai_style_api_key")
+assert_eq(contains(json.stringify(parsed), raw), false)
+
+# Deterministic: same findings → same document.
+again = scan_report_json(result)
+assert_eq(again, text)
+
+clean = scan_report_document({
+    files_discovered: 10,
+    files_scanned: 10,
+    files_skipped: 0,
+    bytes_scanned: 0,
+    findings_count: 0,
+    findings: [],
+    paths: []
+})
+assert_eq(count(clean.findings), 0)
+assert_eq(clean.summary.findings, 0)
+assert_eq(clean.summary.risk_score, 0)
+assert_eq(clean.summary.assessment, "low")
+assert_eq(clean.summary.safe_to_share, false)
+
+flag = parse_command(["safeshare.j2", "scan", ".", "--json", "safeshare-report.json"])
+assert_eq(flag.ok, true)
+assert_eq(flag.path, ".")
+assert_eq(flag.json_out, "safeshare-report.json")
+
+missing = parse_command(["safeshare.j2", "scan", ".", "--json"])
+assert_eq(missing.ok, false)
+
+print("json_report_test ok")

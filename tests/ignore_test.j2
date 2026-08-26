@@ -1,0 +1,60 @@
+import "../src/ignore.j2"
+
+# Directory patterns (trailing /) match that folder at any depth, not files
+# of the same name. Extension globs match the basename only.
+
+user = parse_ignore_rules("""
+# local extras
+node_modules/
+dist/
+coverage/
+test-fixtures/
+*.min.js
+generated/
+""")
+
+assert_eq(count(user), 6)
+
+assert_eq(path_ignored(user, "node_modules", "node_modules", true), true)
+assert_eq(path_ignored(user, "src/node_modules", "node_modules", true), true)
+assert_eq(path_ignored(user, "src/node_modules/leftpad/index.js", "index.js", false), true)
+assert_eq(path_ignored(user, "node_modules", "node_modules", false), false)
+
+assert_eq(path_ignored(user, "dist", "dist", true), true)
+assert_eq(path_ignored(user, "web/dist", "dist", true), true)
+assert_eq(path_ignored(user, "coverage", "coverage", true), true)
+assert_eq(path_ignored(user, "test-fixtures", "test-fixtures", true), true)
+assert_eq(path_ignored(user, "generated", "generated", true), true)
+assert_eq(path_ignored(user, "src", "src", true), false)
+assert_eq(path_ignored(user, "src/app.ts", "app.ts", false), false)
+
+assert_eq(path_ignored(user, "vendor/app.min.js", "app.min.js", false), true)
+assert_eq(path_ignored(user, "app.min.js", "app.min.js", false), true)
+assert_eq(path_ignored(user, "app.js", "app.js", false), false)
+assert_eq(path_ignored(user, "min.js", "min.js", false), false)
+
+# Comments and blanks do not become rules.
+sparse = parse_ignore_rules("\n# ignore me\n\n*.log\n")
+assert_eq(count(sparse), 1)
+assert_eq(path_ignored(sparse, "debug.log", "debug.log", false), true)
+assert_eq(path_ignored(sparse, "debug.txt", "debug.txt", false), false)
+
+# Built-in defaults still apply when the file is empty; extras append.
+merged = merge_ignore_rules("*.min.js\ntest-fixtures/\n", ["secret-tmp/"])
+assert_eq(path_ignored(merged, "node_modules", "node_modules", true), true)
+assert_eq(path_ignored(merged, "build", "build", true), true)
+assert_eq(path_ignored(merged, "lib/foo.min.js", "foo.min.js", false), true)
+assert_eq(path_ignored(merged, "test-fixtures", "test-fixtures", true), true)
+assert_eq(path_ignored(merged, "secret-tmp", "secret-tmp", true), true)
+assert_eq(path_ignored(merged, "src", "src", true), false)
+assert_eq(path_ignored(merged, "SANITIZATION_REPORT.json", "SANITIZATION_REPORT.json", false), true)
+assert_eq(path_ignored(merged, "nested/SANITIZATION_REPORT.json", "SANITIZATION_REPORT.json", false), true)
+assert_eq(path_ignored(merged, "SAFESHARE_GROUND_TRUTH.json", "SAFESHARE_GROUND_TRUTH.json", false), true)
+assert_eq(path_ignored(merged, "nested/SAFESHARE_GROUND_TRUTH.json", "SAFESHARE_GROUND_TRUTH.json", false), true)
+
+# Rooted pattern does not match the same name deeper.
+rooted = parse_ignore_rules("/only-root/\n")
+assert_eq(path_ignored(rooted, "only-root", "only-root", true), true)
+assert_eq(path_ignored(rooted, "src/only-root", "only-root", true), false)
+
+print("ignore_test ok")

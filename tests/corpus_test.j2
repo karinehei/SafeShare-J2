@@ -1,0 +1,151 @@
+import "../src/corpus.j2"
+
+func expect_hit(hits, rule_id, line) = {
+    for h in hits {
+        if h.rule_id == rule_id and h.line == line {
+            give true
+        }
+    }
+    give false
+}
+
+kit = corpus_kit()
+assert_eq(count(kit) > 10, true)
+
+snaps := []
+for f in kit {
+    hits = analyze_content(f.path, f.content)
+    for e in f.expected {
+        assert_eq(expect_hit(hits, e.rule_id, e.line), true)
+    }
+    if count(f.expected) == 0 {
+        assert_eq(count(hits), 0)
+    }
+    snaps = snaps + [FileSnapshot(path: f.path, content: f.content)]
+}
+
+# Full kit vs detectors: zero FN/FP when labels are complete.
+gold = score_against_truth(kit_expected(kit), analyze_all(snaps))
+assert_eq(gold.false_negatives, 0)
+assert_eq(gold.false_positives, 0)
+assert_eq(gold.true_positives, count(kit_expected(kit)))
+assert_eq(gold.precision, 1.0)
+assert_eq(gold.recall, 1.0)
+assert_eq(gold.f1, 1.0)
+assert_eq(count(gold.rules), count(detector_ids()))
+
+aws_row := null
+for row in gold.rules {
+    if row.rule_id == "aws_access_key_id" {
+        aws_row = row
+    }
+}
+assert_eq(aws_row.expected, 1)
+assert_eq(aws_row.true_positives, 1)
+assert_eq(aws_row.false_positives, 0)
+assert_eq(aws_row.false_negatives, 0)
+assert_eq(aws_row.f1, 1.0)
+
+# Hashes/prose/placeholders: entropy has exactly the labeled hit, no extras.
+ent_row := null
+for row in gold.rules {
+    if row.rule_id == "high_entropy_string" {
+        ent_row = row
+    }
+}
+assert_eq(ent_row.expected, 1)
+assert_eq(ent_row.false_positives, 0)
+
+# Same labels, reversed findings → identical metrics (deterministic).
+rev = score_against_truth(kit_expected(kit), reverse(analyze_all(snaps)))
+assert_eq(json.stringify(evaluate_document("x", {files_scanned: 1, findings_count: gold.true_positives}, gold)), json.stringify(evaluate_document("x", {files_scanned: 1, findings_count: rev.true_positives}, rev)))
+
+# Scoring math: miss one, then add a stray.
+perfect := []
+for e in kit_expected(kit) {
+    perfect = perfect + [{file: e.file, line: e.line, rule_id: e.rule_id}]
+}
+miss := []
+i := 0
+repeat i < count(perfect) - 1 {
+    miss = miss + [perfect[i]]
+    i += 1
+}
+dropped = score_against_truth(kit_expected(kit), miss)
+assert_eq(dropped.false_negatives, 1)
+assert_eq(dropped.true_positives, count(perfect) - 1)
+
+extra = score_against_truth(kit_expected(kit), perfect + [{file: "nope.ts", line: 1, rule_id: "generic_password"}])
+assert_eq(extra.false_positives, 1)
+assert_eq(extra.true_positives, count(perfect))
+assert_eq(extra.f1 < 1.0, true)
+assert_eq(extra.precision < 1.0, true)
+
+pw_row := null
+for row in extra.rules {
+    if row.rule_id == "generic_password" {
+        pw_row = row
+    }
+}
+assert_eq(pw_row.false_positives, 1)
+
+# Ground truth never stores secret bytes.
+truth = ground_truth_document(kit)
+js = json.stringify(truth)
+assert_eq(truth.kind, "safeshare-ground-truth")
+assert_eq(contains(js, FAKE_AWS), false)
+assert_eq(contains(js, FAKE_GITHUB), false)
+assert_eq(contains(js, FAKE_OPENAI), false)
+assert_eq(contains(js, FAKE_JWT), false)
+assert_eq(contains(js, FAKE_PASSWORD), false)
+assert_eq(contains(js, "synthetic"), true)
+assert_eq(count(truth.expected), count(kit_expected(kit)))
+
+# Fakes are obviously dummy in the file bodies.
+env = kit_dotenv()
+assert_eq(contains(env.content, "INTENTIONALLY FAKE"), true)
+assert_eq(contains(env.content, "EXAMPLE"), true)
+assert_eq(contains(env.content, "127.0.0.1"), true)
+assert_eq(contains(kit_pem().content, "NOT-A-PRIVATE-KEY"), true)
+
+packed = expand_corpus_kit(kit, 2)
+assert_eq(count(packed), count(kit) * 2)
+assert_eq(text.starts_with(packed[0].path, "r0/"), true)
+
+gencmd = parse_command(["safeshare.j2", "generate-corpus", "./benchmark-corpus"])
+assert_eq(gencmd.ok, true)
+assert_eq(gencmd.command, "generate-corpus")
+assert_eq(gencmd.path, "./benchmark-corpus")
+
+evcmd = parse_command(["safeshare.j2", "evaluate", "./benchmark-corpus", "--json", "eval.json"])
+assert_eq(evcmd.ok, true)
+assert_eq(evcmd.command, "evaluate")
+assert_eq(evcmd.path, "./benchmark-corpus")
+assert_eq(evcmd.json_out, "eval.json")
+
+scmd = parse_command(["safeshare.j2", "score", "./benchmark-corpus"])
+assert_eq(scmd.ok, true)
+assert_eq(scmd.command, "score")
+
+eval_text = format_evaluate_report("./benchmark-corpus", {files_scanned: count(kit), findings_count: gold.true_positives}, gold)
+assert_eq(contains(eval_text, "SafeShare evaluate"), true)
+assert_eq(contains(eval_text, "True positives:"), true)
+assert_eq(contains(eval_text, "False positives:"), true)
+assert_eq(contains(eval_text, "False negatives:"), true)
+assert_eq(contains(eval_text, "Precision:"), true)
+assert_eq(contains(eval_text, "Recall:"), true)
+assert_eq(contains(eval_text, "F1:"), true)
+assert_eq(contains(eval_text, "aws_access_key_id"), true)
+assert_eq(contains(eval_text, "high_entropy_string"), true)
+assert_eq(contains(eval_text, "matching noise"), true)
+assert_eq(contains(eval_text, FAKE_AWS), false)
+
+edoc = evaluate_document("./benchmark-corpus", {files_scanned: count(kit), findings_count: gold.true_positives}, gold)
+assert_eq(edoc.kind, "safeshare-evaluate")
+assert_eq(edoc.f1, 1.0)
+assert_eq(contains(json.stringify(edoc), "elapsed"), false)
+assert_eq(prf(1, 1, 0).precision, 0.5)
+assert_eq(prf(1, 1, 0).recall, 1.0)
+assert_eq(round(prf(1, 1, 0).f1 * 3), 2)
+
+print("corpus_test ok")

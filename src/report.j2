@@ -1,0 +1,174 @@
+import "ai_share.j2"
+import "risk.j2"
+
+# Polished terminal report. No colors. Never prints FileSnapshot.content
+# or a complete secret — only Finding.masked_value.
+
+REPORT_RULE = "────────────────────────────────────────"
+REPORT_INDENT = "          "
+REPORT_LABEL_WIDTH = 18
+REPORT_NUM_WIDTH = 8
+REPORT_SEV_WIDTH = 10
+
+func pad_label(s) = {
+    if len(s) >= REPORT_LABEL_WIDTH {
+        give s
+    }
+    give s + text.repeat(" ", REPORT_LABEL_WIDTH - len(s))
+}
+
+func pad_num(n) = text.pad_left(str(n), REPORT_NUM_WIDTH)
+
+func stat_line(label, n) = pad_label(label) + pad_num(n)
+
+func share_verdict(findings) = {
+    if count_blocking(findings) > 0 {
+        give "NO"
+    }
+    give "not guaranteed"
+}
+
+func finding_loc(f) = fmt("{}:{}", f.file, f.line)
+
+func with_masked_lines(lines, f) = {
+    if f.masked_value == "" {
+        give lines
+    }
+    give lines + ["", REPORT_INDENT + f.masked_value]
+}
+
+func with_recommendation_lines(lines, f) = {
+    if f.recommendation == "" {
+        give lines
+    }
+    give lines + ["", REPORT_INDENT + "Recommendation:", REPORT_INDENT + f.recommendation]
+}
+
+func with_ai_share_lines(lines, f, ai_share) = {
+    if not ai_share or not is_ai_share_path(f.file) {
+        give lines
+    }
+    give lines + ["", REPORT_INDENT + "This path is commonly pasted into AI assistant chats."]
+}
+
+func finding_block_lines(f, ai_share) = {
+    head = [
+        pad_right_sev(upper(f.severity.name)) + finding_loc(f),
+        REPORT_INDENT + f.message
+    ]
+    give with_ai_share_lines(with_recommendation_lines(with_masked_lines(head, f), f), f, ai_share)
+}
+
+func format_finding_block(f, ai_share) = join(finding_block_lines(f, ai_share), "\n")
+
+func pad_right_sev(s) = {
+    if len(s) >= REPORT_SEV_WIDTH {
+        give s
+    }
+    give s + text.repeat(" ", REPORT_SEV_WIDTH - len(s))
+}
+
+func format_finding_blocks(findings, ai_share) = {
+    ordered = sort_findings(findings)
+    if count(ordered) == 0 {
+        give join([
+            "No findings.",
+            "",
+            "No known secret or credential patterns matched.",
+            "This does not guarantee the files contain no sensitive information."
+        ], "\n")
+    }
+    give join(ordered >> func(f) = format_finding_block(f, ai_share), "\n\n")
+}
+
+func format_summary(result) = {
+    risk = score_findings(result.findings)
+    n_crit = count_severity_rank(result.findings, 5)
+    n_high = count_severity_rank(result.findings, 4)
+    n_med = count_severity_rank(result.findings, 3)
+    n_low = count_severity_rank(result.findings, 2) + count_severity_rank(result.findings, 1)
+    give join([
+        REPORT_RULE,
+        stat_line("Files scanned:", result.files_scanned),
+        stat_line("Files skipped:", result.files_skipped),
+        stat_line("Findings:", result.findings_count),
+        "",
+        stat_line("Critical:", n_crit),
+        stat_line("High:", n_high),
+        stat_line("Medium:", n_med),
+        stat_line("Low:", n_low),
+        "",
+        pad_label("Risk score:") + fmt("{} / 100", risk.score),
+        pad_label("Assessment:") + risk.label,
+        pad_label("Safe to share:") + share_verdict(result.findings)
+    ], "\n")
+}
+
+SAFESHARE_VERSION = "0.1.0"
+
+func json_assessment(label) = {
+    if label == "CRITICAL RISK" {
+        give "critical"
+    }
+    if label == "HIGH RISK" {
+        give "high"
+    }
+    if label == "MODERATE RISK" {
+        give "moderate"
+    }
+    give "low"
+}
+
+# Plain map only — never a Finding instance, never a raw secret.
+func finding_json_record(f) = {
+    give {
+        rule_id: f.rule_id,
+        severity: f.severity.name,
+        category: f.category,
+        file: f.file,
+        line: f.line,
+        column: f.column,
+        message: f.message,
+        reason: f.reason,
+        recommendation: f.recommendation,
+        masked_value: f.masked_value,
+        fingerprint: f.fingerprint
+    }
+}
+
+func findings_json_records(findings) = sort_findings(findings) >> finding_json_record
+
+# Document as J2 maps/seqs, then json.stringify. Do not concatenate JSON text.
+func scan_report_document(result) = {
+    risk = score_findings(result.findings)
+    # safe_to_share is never true: zero findings is not a clearance to paste the tree.
+    give {
+        version: SAFESHARE_VERSION,
+        summary: {
+            files_scanned: result.files_scanned,
+            findings: result.findings_count,
+            risk_score: risk.score,
+            assessment: json_assessment(risk.label),
+            safe_to_share: false
+        },
+        findings: findings_json_records(result.findings)
+    }
+}
+
+func scan_report_json(result) = json.stringify_pretty(scan_report_document(result))
+
+func scan_mode_lines(ai_share) = {
+    if ai_share {
+        give ["Mode: AI-share"]
+    }
+    give []
+}
+
+func format_scan_report(result, root, ai_share) = {
+    head = ["SafeShare J2", REPORT_RULE, "", fmt("Scanning: {}", root)] + scan_mode_lines(ai_share)
+    give join(head + ["", format_finding_blocks(result.findings, ai_share), "", format_summary(result)], "\n")
+}
+
+func print_scan_result(result, root, ai_share) = {
+    print(format_scan_report(result, root, ai_share))
+}

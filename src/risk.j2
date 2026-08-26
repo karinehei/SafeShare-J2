@@ -1,0 +1,85 @@
+import "finding.j2"
+
+# Deterministic 0–100 risk score. No ML, no randomness, no file I/O.
+#
+# Formula (integer, diminishing returns per band):
+#
+#   band(n, first, extra, cap) =
+#       0                              if n == 0
+#       min(cap, first + extra*(n-1))  otherwise
+#
+#   critical        first 40, extra 15, cap 70
+#   high            first 20, extra  8, cap 40
+#   medium          first  8, extra  3, cap 18
+#   low + info      first  3, extra  1, cap  8
+#
+#   critical credentials (severity critical AND category secret or
+#   credential) add a bonus: first 15, extra 5, cap 25. One AWS key
+#   is therefore 40 + 15 = 55, not a handful of debug flags.
+#
+#   score = min(100, critical + high + medium + low + credential bonus)
+#
+# Caps stop 100 low findings from looking like a critical incident.
+# Labels: 0–24 LOW, 25–49 MODERATE, 50–84 HIGH, 85–100 CRITICAL.
+
+func band_points(n, first, extra, cap) = {
+    if n <= 0 {
+        give 0
+    }
+    give min(cap, first + extra * (n - 1))
+}
+
+func count_severity_rank(findings, rank) =
+    count(findings ? (func(f) = f.severity.rank == rank))
+
+func is_critical_credential(f) =
+    f.severity.rank == 5 and (f.category == "secret" or f.category == "credential")
+
+func count_critical_credentials(findings) = count(findings ? is_critical_credential)
+
+func risk_label(score) = {
+    if score >= 85 {
+        give "CRITICAL RISK"
+    }
+    if score >= 50 {
+        give "HIGH RISK"
+    }
+    if score >= 25 {
+        give "MODERATE RISK"
+    }
+    give "LOW RISK"
+}
+
+# Independent reductions over the same list (montecarlo shape), then a pure mix.
+# Do not fuse these into one mutating multi-counter loop to "save a pass".
+func score_findings(findings) = {
+    n_crit = count_severity_rank(findings, 5)
+    n_high = count_severity_rank(findings, 4)
+    n_med = count_severity_rank(findings, 3)
+    n_low = count_severity_rank(findings, 2) + count_severity_rank(findings, 1)
+    n_cred = count_critical_credentials(findings)
+    p_crit = band_points(n_crit, 40, 15, 70)
+    p_high = band_points(n_high, 20, 8, 40)
+    p_med = band_points(n_med, 8, 3, 18)
+    p_low = band_points(n_low, 3, 1, 8)
+    p_cred = band_points(n_cred, 15, 5, 25)
+    raw = p_crit + p_high + p_med + p_low + p_cred
+    score = min(100, raw)
+    why = fmt("critical {} + high {} + medium {} + low {} + critical-credential bonus {} = {} (cap 100)", p_crit, p_high, p_med, p_low, p_cred, score)
+    give {
+        score: score,
+        label: risk_label(score),
+        reason: why,
+        critical_points: p_crit,
+        high_points: p_high,
+        medium_points: p_med,
+        low_points: p_low,
+        credential_bonus: p_cred
+    }
+}
+
+func risk_score_text(r) = join([
+    fmt("Risk score: {} / 100", r.score),
+    fmt("Assessment: {}", r.label),
+    fmt("Why: {}", r.reason)
+], "\n")

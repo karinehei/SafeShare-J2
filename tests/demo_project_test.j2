@@ -1,0 +1,110 @@
+import "../src/rules.j2"
+
+# Locks the two-minute demo-project/ scan story.
+# Same strings as the fixture files; keep them in sync.
+
+env = """# SafeShare demo — INTENTIONALLY FAKE and unusable.
+# The access key id is the published AWS documentation example.
+# It cannot sign requests and must not be used outside this fixture.
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+S3_BUCKET=safeshare-demo-example
+DATABASE_URL=postgres://127.0.0.1:5432/safeshare_demo
+"""
+
+config = """// SafeShare demo — INTENTIONALLY FAKE local config.
+// CORS=* and disabled TLS checks are here so a scan has something
+// besides credentials to talk about. Do not copy this into production.
+
+export const config = {
+  CORS: "*",
+  rejectUnauthorized: false,
+}
+"""
+
+app = """import { config } from "./config.ts"
+
+// SafeShare demo — INTENTIONALLY FAKE session.
+// Unsigned alg=none JWT. It authenticates nowhere. Do not send it
+// to a real API or paste it into an assistant chat as a live token.
+const demoSession = "eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx"
+
+export function handler() {
+  return {
+    cors: config.CORS,
+    session: demoSession,
+    note: "synthetic demo user — not a real account",
+  }
+}
+"""
+
+compose = """# SafeShare demo — local-only compose.
+# DEBUG is on so the scan can show a LOW config finding.
+# No credentials live in this file.
+
+services:
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    environment:
+      DEBUG: "true"
+      PORT: "3000"
+      DATABASE_URL: "postgres://127.0.0.1:5432/safeshare_demo"
+"""
+
+agents = """# Agent notes (SafeShare demo)
+
+This tree is a **two-minute SafeShare fixture**, not a product.
+
+- Every credential-shaped string is **synthetic and unusable**.
+- Do not paste `.env` or `src/app.ts` into ChatGPT, Claude, Gemini, Cursor, or Copilot as if they were a real app.
+"""
+
+readme = """# SafeShare demo project
+
+All credentials are synthetic and unusable. See the table in demo-project/README.md.
+"""
+
+env_hits = analyze_content(".env", env)
+assert_eq(count(env_hits), 1)
+assert_eq(env_hits[0].rule_id, "aws_access_key_id")
+assert_eq(env_hits[0].severity.name, "critical")
+assert_eq(contains(env_hits[0].to_text(), "AKIAIOSFODNN7EXAMPLE"), false)
+
+app_hits = analyze_content("src/app.ts", app)
+assert_eq(count(app_hits), 1)
+assert_eq(app_hits[0].rule_id, "jwt_token")
+assert_eq(app_hits[0].severity.name, "high")
+assert_eq(contains(app_hits[0].to_text(), "eyJhbGciOiJub25lIn0"), false)
+
+cfg_hits = analyze_content("src/config.ts", config)
+assert_eq(count(cfg_hits), 2)
+cfg_ids = [cfg_hits[0].rule_id, cfg_hits[1].rule_id]
+assert_eq(contains(cfg_ids, "tls_verification_disabled"), true)
+assert_eq(contains(cfg_ids, "cors_wildcard"), true)
+
+compose_hits = analyze_content("docker-compose.yml", compose)
+assert_eq(count(compose_hits), 1)
+assert_eq(compose_hits[0].rule_id, "debug_enabled")
+assert_eq(compose_hits[0].severity.name, "low")
+
+assert_eq(count(analyze_content("AGENTS.md", agents)), 0)
+assert_eq(count(analyze_content("README.md", readme)), 0)
+
+all = env_hits + app_hits + cfg_hits + compose_hits
+assert_eq(count(all), 5)
+n_crit := 0
+n_high := 0
+n_med := 0
+n_low := 0
+for f in all {
+    if f.severity.name == "critical" { n_crit += 1 }
+    if f.severity.name == "high" { n_high += 1 }
+    if f.severity.name == "medium" { n_med += 1 }
+    if f.severity.name == "low" { n_low += 1 }
+}
+assert_eq(n_crit, 1)
+assert_eq(n_high, 2)
+assert_eq(n_med, 1)
+assert_eq(n_low, 1)
+
+print("demo_project_test ok")

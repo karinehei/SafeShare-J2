@@ -1,0 +1,176 @@
+import "util.j2"
+
+# argv → command record. proc.argv()[0] is the program name.
+
+func usage_text() = """SafeShare J2 — local-first secret scanner
+
+usage:
+  j2 run --allow-fs src/main.j2 PATH
+  j2 run --allow-fs src/main.j2 scan PATH
+  j2 run --allow-fs src/main.j2 scan PATH --json FILE
+  j2 run --allow-fs src/main.j2 scan PATH --ai-share
+  j2 run --allow-fs src/main.j2 scan PATH --max-bytes N
+  j2 run --allow-fs src/main.j2 scan PATH --exclude PATTERN
+  j2 run --allow-fs src/main.j2 sanitize PATH --output DEST
+  j2 run --allow-fs src/main.j2 benchmark CORPUS
+  j2 run --allow-fs src/main.j2 benchmark CORPUS --json FILE
+  j2 run --allow-fs src/main.j2 benchmark CORPUS --trials N --warmup N
+  j2 run --allow-fs src/main.j2 generate-corpus DEST
+  j2 run --allow-fs src/main.j2 generate-corpus DEST --repeat N
+  j2 run --allow-fs src/main.j2 evaluate CORPUS
+  j2 run --allow-fs src/main.j2 evaluate CORPUS --json FILE
+
+DEST must be a sibling or absolute folder outside PATH (not `.`, `..`, or inside PATH).
+Evaluate compares a scan to SAFESHARE_GROUND_TRUTH.json. Metrics omit wall-clock so they stay deterministic.
+Benchmark discards warmup runs and reports the median of timed trials.
+The j2 runtime denies filesystem access until you pass --allow-fs.
+Do not pass --allow-net; SafeShare is local-only.
+"""
+
+func is_capability_flag(s) = {
+    if s == "--allow-fs" or s == "--allow-proc" or s == "--allow-net" {
+        give true
+    }
+    if s == "--allow-unsafe" or s == "--allow-all" {
+        give true
+    }
+    give false
+}
+
+# Drop runtime grant flags so a native binary can take --allow-fs without
+# treating it as the scan path. `j2 run` already consumes these itself.
+func program_args(argv) = {
+    out := []
+    i := 0
+    repeat i < count(argv) {
+        if not is_capability_flag(argv[i]) {
+            push(out, argv[i])
+        }
+        i += 1
+    }
+    give out
+}
+
+func parse_max_bytes(argv) = parse_positive_int_flag(argv, "--max-bytes", DEFAULT_MAX_TEXT_BYTES)
+
+func parse_positive_int_flag(argv, name, fallback) = {
+    i := 0
+    repeat i < count(argv) {
+        if argv[i] == name {
+            if i + 1 < count(argv) {
+                try {
+                    n = num(argv[i + 1])
+                    if n > 0 {
+                        give floor(n)
+                    }
+                } else ConversionError {
+                    give fallback
+                }
+            }
+            give fallback
+        }
+        i += 1
+    }
+    give fallback
+}
+
+func parse_excludes(argv) = {
+    out := []
+    i := 0
+    repeat i < count(argv) {
+        if argv[i] == "--exclude" and i + 1 < count(argv) {
+            push(out, argv[i + 1])
+            i += 2
+        } else {
+            i += 1
+        }
+    }
+    give out
+}
+
+func has_flag(argv, name) = {
+    for s in argv {
+        if s == name {
+            give true
+        }
+    }
+    give false
+}
+
+func parse_flag_value(argv, name) = {
+    i := 0
+    repeat i < count(argv) {
+        if argv[i] == name {
+            if i + 1 < count(argv) {
+                next = argv[i + 1]
+                if not text.starts_with(next, "-") {
+                    give next
+                }
+            }
+            give ""
+        }
+        i += 1
+    }
+    give ""
+}
+
+func parse_command(raw_argv) = {
+    argv = program_args(raw_argv)
+    max_bytes = parse_max_bytes(argv)
+    excludes = parse_excludes(argv)
+    ai_share = has_flag(argv, "--ai-share")
+    json_out = parse_flag_value(argv, "--json")
+    blank = {ok: false, command: "", path: "", output: "", max_bytes: max_bytes, excludes: excludes, ai_share: ai_share, json_out: json_out, message: usage_text()}
+    if has_flag(argv, "--json") and json_out == "" {
+        give {ok: false, command: "scan", path: "", output: "", max_bytes: max_bytes, excludes: excludes, ai_share: ai_share, json_out: "", message: "--json requires a file path\n"}
+    }
+    usage_fail = blank
+    if count(argv) < 2 {
+        give usage_fail
+    }
+
+    first = argv[1]
+    if first == "-h" or first == "--help" {
+        give usage_fail
+    }
+
+    if first == "scan" or first == "sanitize" or first == "benchmark" or first == "generate-corpus" or first == "evaluate" or first == "score" {
+        if count(argv) < 3 {
+            give {ok: false, command: first, path: "", output: "", max_bytes: max_bytes, excludes: excludes, ai_share: ai_share, json_out: json_out, message: usage_text()}
+        }
+        dest := ""
+        if first == "sanitize" {
+            dest = parse_output_flag(argv)
+            if dest == "" {
+                give {
+                    ok: false,
+                    command: first,
+                    path: argv[2],
+                    output: "",
+                    max_bytes: max_bytes,
+                    excludes: excludes,
+                    ai_share: ai_share,
+                    json_out: json_out,
+                    message: "sanitize requires --output DEST\n"
+                }
+            }
+        }
+        give {ok: true, command: first, path: argv[2], output: dest, max_bytes: max_bytes, excludes: excludes, ai_share: ai_share, json_out: json_out, message: ""}
+    }
+
+    give {ok: true, command: "scan", path: first, output: "", max_bytes: max_bytes, excludes: excludes, ai_share: ai_share, json_out: json_out, message: ""}
+}
+
+func parse_output_flag(argv) = {
+    i := 3
+    repeat i < count(argv) {
+        if argv[i] == "--output" {
+            if i + 1 < count(argv) {
+                give argv[i + 1]
+            }
+            give ""
+        }
+        i += 1
+    }
+    give ""
+}

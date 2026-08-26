@@ -1,0 +1,273 @@
+import "finding.j2"
+
+# Shannon entropy over characters, in bits per character:
+#   H = -sum p_i * log2(p_i)
+# Hex cannot exceed 4 bits/char. Mixed alphanumeric random tokens
+# typically sit near 5. English and identifiers sit lower.
+#
+# All functions here are pure (`=`): no filesystem, no mutation of
+# caller state. Native J2 may split independent pure calls and
+# associative reductions; do not add a thread API around this module.
+
+ENTROPY_MIN_LEN = 24
+ENTROPY_MIN_BITS = 4.5
+ENTROPY_MIN_UNIQUE = 0.4
+
+ENTROPY_ASSIGN_QUOTED = "([A-Za-z_][A-Za-z0-9_]*)\\s*[=:]\\s*[\"']([^\"']{24,})[\"']"
+ENTROPY_ASSIGN_BARE = "([A-Za-z_][A-Za-z0-9_]*)\\s*[=:]\\s*([A-Za-z0-9+/=_\\-.]{24,})"
+ENTROPY_QUOTED = "[\"']([A-Za-z0-9+/=_\\-.]{24,})[\"']"
+
+func count_char(chars, ch) = count(chars ? (_ == ch))
+
+# Independent of other alphabet symbols: H is the sum of these terms.
+func shannon_contribution(chars, n, ch) = {
+    p = count_char(chars, ch) / n
+    give 0.0 - p * log2(p)
+}
+
+func shannon_term(chars, n) = func(ch) = shannon_contribution(chars, n, ch)
+
+func shannon_entropy(s) = {
+    n = len(s)
+    if n == 0 {
+        give 0.0
+    }
+    chars = text.chars(s)
+    give sum(unique(chars) >> shannon_term(chars, n))
+}
+
+func unique_ratio(s) = {
+    n = len(s)
+    if n == 0 {
+        give 0.0
+    }
+    give len(unique(text.chars(s))) / n
+}
+
+func has_char_from(s, alphabet) = {
+    for ch in text.chars(s) {
+        if contains(alphabet, ch) {
+            give true
+        }
+    }
+    give false
+}
+
+func has_char_outside(s, alphabet) = {
+    for ch in text.chars(s) {
+        if not contains(alphabet, ch) {
+            give true
+        }
+    }
+    give false
+}
+
+func flag01(present) = {
+    if present {
+        give 1
+    }
+    give 0
+}
+
+# Four independent scans of a short token (montecarlo shape), not one mutating pass.
+func charset_flags(s) = {
+    lower_set = "abcdefghijklmnopqrstuvwxyz"
+    upper_set = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    digit_set = "0123456789"
+    lower = flag01(has_char_from(s, lower_set))
+    upper = flag01(has_char_from(s, upper_set))
+    digit = flag01(has_char_from(s, digit_set))
+    other = flag01(has_char_outside(s, lower_set + upper_set + digit_set))
+    give {lower: lower, upper: upper, digit: digit, other: other}
+}
+
+func is_hex_string(s) = {
+    if s == "" {
+        give false
+    }
+    hex = "0123456789abcdefABCDEF"
+    for ch in text.chars(s) {
+        if not contains(hex, ch) {
+            give false
+        }
+    }
+    give true
+}
+
+func is_common_hash(s) = {
+    n = len(s)
+    give is_hex_string(s) and (n == 32 or n == 40 or n == 64 or n == 128)
+}
+
+func is_uuid_string(s) = {
+    if len(s) != 36 {
+        give false
+    }
+    if s[8] != "-" or s[13] != "-" or s[18] != "-" or s[23] != "-" {
+        give false
+    }
+    hex = slice(s, 0, 8) + slice(s, 9, 13) + slice(s, 14, 18) + slice(s, 19, 23) + slice(s, 24, 36)
+    give is_hex_string(hex)
+}
+
+func is_base64_charset(s) = {
+    b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+    if s == "" {
+        give false
+    }
+    for ch in text.chars(s) {
+        if not contains(b64, ch) {
+            give false
+        }
+    }
+    give true
+}
+
+func looks_like_known_format(s) = {
+    if text.starts_with(s, "AKIA") { give true }
+    if text.starts_with(s, "ghp_") or text.starts_with(s, "gho_") or text.starts_with(s, "ghu_") { give true }
+    if text.starts_with(s, "ghs_") or text.starts_with(s, "ghr_") or text.starts_with(s, "github_pat_") { give true }
+    if text.starts_with(s, "AIza") or text.starts_with(s, "sk-") or text.starts_with(s, "eyJ") { give true }
+    if text.starts_with(s, "-----BEGIN") { give true }
+    give false
+}
+
+# True when the token looks more like a secret than like prose or a digest.
+# This is a heuristic: high entropy is not proof of a credential.
+func entropy_suspicious(s) = {
+    n = len(s)
+    if n < ENTROPY_MIN_LEN {
+        give false
+    }
+    if contains(s, " ") or contains(s, "\t") or contains(s, "/") or contains(s, "\\") {
+        give false
+    }
+    if contains(s, "://") {
+        give false
+    }
+    if text.starts_with(s, "${") or text.starts_with(s, "{{") or text.starts_with(s, "<") {
+        give false
+    }
+    if looks_like_known_format(s) or is_common_hash(s) or is_uuid_string(s) {
+        give false
+    }
+    flags = charset_flags(s)
+    if flags.digit == 0 and flags.other == 0 {
+        give false
+    }
+    if flags.lower + flags.upper + flags.digit + flags.other < 2 {
+        give false
+    }
+    if unique_ratio(s) < ENTROPY_MIN_UNIQUE {
+        give false
+    }
+    give shannon_entropy(s) >= ENTROPY_MIN_BITS
+}
+
+func entropy_reason(name, raw, bits) = {
+    bits_text = str(round(bits * 100) / 100)
+    if name == "" or name == "(quoted)" {
+        give fmt("A {}-character value has unusually high Shannon entropy ({} bits/char).\nConfidence: heuristic", len(raw), bits_text)
+    }
+    give fmt("Variable \"{}\" contains a {}-character value\nwith unusually high entropy ({} bits/char).\nConfidence: heuristic", name, len(raw), bits_text)
+}
+
+func make_entropy_finding(path, content, start, name, raw) = {
+    loc = line_column_at(content, start)
+    bits = shannon_entropy(raw)
+    give make_finding({
+        rule_id: "high_entropy_string",
+        severity: Severity::medium(),
+        file: path,
+        line: loc.line,
+        column: loc.column,
+        category: "heuristic",
+        message: "Possible high-entropy credential",
+        reason: entropy_reason(name, raw, bits),
+        recommendation: "This is a heuristic, not proof of a secret. If the value is a credential, rotate it and load it from the environment. If it is a hash, fixture, or identifier, ignore the finding"
+    }, raw)
+}
+
+func captures_at(pat, content, m) = {
+    g = regex.groups(pat, slice(content, m.start, len(content)))
+    if type(g) != "seq" {
+        give []
+    }
+    if count(g) > 0 and g[0] == m.text {
+        give slice(g, 1, count(g))
+    }
+    give g
+}
+
+func named_entropy_record(pat, content, m) = {
+    g = captures_at(pat, content, m)
+    if count(g) < 2 {
+        give []
+    }
+    give [{start: m.start, name: g[0], raw: g[1]}]
+}
+
+func named_from_pattern(pat, content) = func(m) = named_entropy_record(pat, content, m)
+
+func named_entropy_candidates(content, pat) =
+    flatten(regex.find_all(pat, content) >> named_from_pattern(pat, content))
+
+func quoted_candidate_raw(m, g) = {
+    if count(g) > 0 {
+        give g[count(g) - 1]
+    }
+    give m.text
+}
+
+func quoted_entropy_record(content, m) = {
+    g = captures_at(ENTROPY_QUOTED, content, m)
+    give {start: m.start, name: "(quoted)", raw: quoted_candidate_raw(m, g)}
+}
+
+func quoted_from_content(content) = func(m) = quoted_entropy_record(content, m)
+
+func quoted_entropy_candidates(content) =
+    regex.find_all(ENTROPY_QUOTED, content) >> quoted_from_content(content)
+
+# Three independent regex passes, then an associative concat.
+func entropy_candidates(content) = {
+    assigned = named_entropy_candidates(content, ENTROPY_ASSIGN_QUOTED)
+    bare = named_entropy_candidates(content, ENTROPY_ASSIGN_BARE)
+    quoted = quoted_entropy_candidates(content)
+    give assigned + bare + quoted
+}
+
+# Independent per candidate. Returns [] or [finding]; concat is the reduction.
+func entropy_from_candidate(path, content, pem, cand) = {
+    raw = cand.raw
+    if not entropy_suspicious(raw) {
+        give []
+    }
+    if pem and is_base64_charset(raw) {
+        give []
+    }
+    give [make_entropy_finding(path, content, cand.start, cand.name, raw)]
+}
+
+# First-hit wins. Sequential on purpose: uniqueness is a dependence across candidates.
+func unique_findings_by_fingerprint(findings) = {
+    out := []
+    seen := []
+    for f in findings {
+        if contains(seen, f.fingerprint) {
+            skip
+        }
+        seen = seen + [f.fingerprint]
+        out = out + [f]
+    }
+    give out
+}
+
+func entropy_on_file(path, content, pem) = func(cand) = entropy_from_candidate(path, content, pem, cand)
+
+# Per-candidate calls are independent. Dedup by fingerprint is sequential on purpose.
+func detect_high_entropy(path, content) = {
+    pem = regex.match("-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", content)
+    hits = flatten(entropy_candidates(content) >> entropy_on_file(path, content, pem))
+    give unique_findings_by_fingerprint(hits)
+}

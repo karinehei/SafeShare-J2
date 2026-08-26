@@ -1,0 +1,113 @@
+import "../src/sanitize.j2"
+
+assert_eq(dest_not_allowed("./project", "./project"), true)
+assert_eq(dest_not_allowed("project", "./project"), true)
+assert_eq(dest_not_allowed("./project", "./project/nested"), true)
+assert_eq(dest_not_allowed("./project", "./project-safe"), false)
+assert_eq(dest_not_allowed("./project", "./safe"), false)
+assert_eq(dest_not_allowed(".", "./out"), true)
+assert_eq(dest_not_allowed("./project", "."), true)
+assert_eq(dest_not_allowed("./project", ".."), true)
+assert_eq(dest_not_allowed("./a/b", "./a"), true)
+assert_eq(dest_not_allowed("./project", "../outside"), true)
+assert_eq(dest_path_is_safe("./project-safe"), true)
+assert_eq(dest_path_is_safe("/tmp/project-safe"), true)
+assert_eq(dest_path_is_safe("."), false)
+assert_eq(dest_path_is_safe(".."), false)
+assert_eq(dest_path_is_safe(""), false)
+assert_eq(rel_is_safe("app.env"), true)
+assert_eq(rel_is_safe("nested/note.txt"), true)
+assert_eq(rel_is_safe("../secret"), false)
+assert_eq(rel_is_safe("foo/../../etc/passwd"), false)
+assert_eq(rel_is_safe("/etc/passwd"), false)
+assert_eq(rel_is_safe("C:/Windows/system32"), false)
+assert_eq(rel_is_safe(""), false)
+assert_eq(safe_dest_join("./out", "a/b.env"), "./out/a/b.env")
+assert_eq(safe_dest_join("./out", "../etc/passwd"), "")
+assert_eq(safe_dest_join("./out", "/etc/passwd"), "")
+
+aws = "AKIAIOSFODNN7EXAMPLE"
+src = "OPENAI_API_KEY=\"sk-abcdefghijklmnopqrstuvwxyzABCDEF\"\nAWS_KEY=\"" + aws + "\"\npassword = hunter2_secret\nDEBUG=true\n"
+out = redact_content("app.env", src)
+
+assert_eq(out.modified, true)
+assert_eq(contains(out.content, aws), false)
+assert_eq(contains(out.content, "[SAFESHARE_REDACTED]"), true)
+assert_eq(contains(out.content, "AWS_KEY=\"[SAFESHARE_REDACTED]\""), true)
+# Heuristic OpenAI-style key, generic password, and risky_config stay.
+assert_eq(contains(out.content, "sk-abcdefghijklmnopqrstuvwxyzABCDEF"), true)
+assert_eq(contains(out.content, "hunter2_secret"), true)
+assert_eq(contains(out.content, "DEBUG=true"), true)
+assert_eq(contains(out.rule_ids, "aws_access_key_id"), true)
+assert_eq(contains(out.rule_ids, "openai_style_api_key"), false)
+
+gh = "token = ghp_0123456789abcdef0123456789abcdef1234\n"
+gh_out = redact_content("gh.env", gh)
+assert_eq(contains(gh_out.content, "ghp_"), false)
+assert_eq(contains(gh_out.content, "[SAFESHARE_REDACTED]"), true)
+
+db = "DATABASE_URL=postgres://ada:hunter2_secret@db.internal:5432/app\n"
+db_out = redact_content("db.env", db)
+assert_eq(contains(db_out.content, "hunter2_secret"), false)
+assert_eq(contains(db_out.content, "postgres://[SAFESHARE_REDACTED]@db.internal:5432/app"), true)
+
+pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEASECRETMATERIAL\n-----END RSA PRIVATE KEY-----\n"
+pem_out = redact_content("id_rsa", pem)
+assert_eq(contains(pem_out.content, "SECRETMATERIAL"), false)
+assert_eq(contains(pem_out.content, "BEGIN RSA PRIVATE KEY"), false)
+assert_eq(contains(pem_out.content, "[SAFESHARE_REDACTED]"), true)
+
+clean = redact_content("readme.md", "# hello\n")
+assert_eq(clean.modified, false)
+assert_eq(clean.replacements, 0)
+assert_eq(clean.content, "# hello\n")
+
+# Pure plan stage: redact without touching the filesystem.
+planned_aws = plan_sanitize_job({
+    kind: "text",
+    file: "app.env",
+    outp: "./project-safe/app.env",
+    content: src
+})
+assert_eq(planned_aws.kind, "text")
+assert_eq(contains(planned_aws.content, aws), false)
+assert_eq(contains(planned_aws.content, "[SAFESHARE_REDACTED]"), true)
+assert_eq(planned_aws.modified, true)
+assert_eq(contains(planned_aws.rule_ids, "aws_access_key_id"), true)
+
+skipped_plan = plan_sanitize_job({kind: "skip", file: "photo.png", reason: "binary"})
+assert_eq(skipped_plan.kind, "skip")
+assert_eq(skipped_plan.reason, "binary")
+
+batch = plan_sanitize_jobs([
+    {kind: "text", file: "a.env", outp: "out/a.env", content: src},
+    {kind: "skip", file: "x.bin", reason: "binary"}
+])
+assert_eq(count(batch), 2)
+assert_eq(contains(batch[0].content, aws), false)
+assert_eq(batch[1].kind, "skip")
+
+# Report JSON never contains the live secret.
+doc = sanitization_report_document("./project", "./project-safe", 3, [
+    {file: "app.env", replacements: 1, rule_ids: ["aws_access_key_id"]}
+], [], 1)
+js = json.stringify_pretty(doc)
+assert_eq(contains(js, aws), false)
+assert_eq(doc.summary.files_modified, 1)
+assert_eq(doc.placeholder, "[SAFESHARE_REDACTED]")
+assert_eq(contains(js, "aws_access_key_id"), true)
+
+text = format_sanitize_report("./project", "./project-safe", doc)
+assert_eq(contains(text, "Modified files:"), true)
+assert_eq(contains(text, "app.env"), true)
+assert_eq(contains(text, aws), false)
+
+unsafe_doc = sanitization_report_document("./project", "./project-safe", 0, [], [
+    {file: "(unsafe path)", reason: "unsafe_path"}
+], 0)
+ujs = json.stringify(unsafe_doc)
+assert_eq(contains(ujs, "../"), false)
+assert_eq(contains(ujs, "unsafe_path"), true)
+assert_eq(contains(ujs, aws), false)
+
+print("sanitize_test ok")

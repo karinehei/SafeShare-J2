@@ -1,0 +1,212 @@
+import "util.j2"
+import "finding.j2"
+import "rules.j2"
+import "ignore.j2"
+
+# Filesystem scanner vs analysis
+#
+# I/O stays serial (walk, read, capability errors). Pure analysis is
+# flatten(snapshots >> analyze_snapshot): independent per file, associative
+# concat. Native J2 may split that; do not add a thread API or parallel fs.
+#
+# Requires --allow-fs (j2 run --allow-fs ...):
+#   discover_files, collect_files  — fs.is_file, fs.is_dir, fs.list_dir
+#   try_load_text, load_text_files — fs.metadata, fs.read_file
+#   read_safeshareignore, load_tree
+#   run_scan in main.j2            — fs.exists
+#
+# Does not need filesystem capability (pure):
+#   parse_ignore_rules, path_ignored, merge_ignore_rules
+#   should_skip_name, rel_path, has_binary_extension, looks_like_binary
+#   relativize_snapshots, analyze_file, analyze_snapshot, analyze_all, complete_scan
+#
+# Never pass --allow-net. SafeShare is local-only.
+
+MAX_TEXT_BYTES = DEFAULT_MAX_TEXT_BYTES
+
+func read_safeshareignore(root) = {
+    path := join_path(root, ".safeshareignore")
+    try {
+        if fs.is_file(root) {
+            path = join_path(dirname(root), ".safeshareignore")
+        }
+    } else RuntimeError {
+        path = path
+    }
+    try {
+        if not fs.is_file(path) {
+            give ""
+        }
+        give fs.read_file(path)
+    } else RuntimeError {
+        give ""
+    }
+}
+
+func discover_files(root, rules) = {
+    found := []
+    collect_files(root, root, found, rules)
+    give found
+}
+
+# Serial I/O tree walk. Mutating `found` is intentional: directory listing
+# depends on parent results, ignore rules, and capabilities. Do not rewrite
+# this as independent recursive calls expecting automatic parallelism.
+
+func collect_files(root, path, found, rules) = {
+    is_file := false
+    is_dir := false
+    try {
+        is_file = fs.is_file(path)
+    } else RuntimeError {
+        give
+    }
+    if is_file {
+        if path != root {
+            if not path_is_inside(root, path) {
+                give
+            }
+            rel = rel_path(root, path)
+            if not rel_is_safe(rel) {
+                give
+            }
+            if path_ignored(rules, rel, basename(path), false) {
+                give
+            }
+        }
+        push(found, path)
+        give
+    }
+    try {
+        is_dir = fs.is_dir(path)
+    } else RuntimeError {
+        give
+    }
+    if not is_dir {
+        give
+    }
+    if path != root {
+        if not path_is_inside(root, path) {
+            give
+        }
+        if path_ignored(rules, rel_path(root, path), basename(path), true) {
+            give
+        }
+    }
+    names := []
+    try {
+        names = fs.list_dir(path)
+    } else RuntimeError {
+        give
+    }
+    for name in names {
+        if name == "" or name == "." or name == ".." {
+            skip
+        }
+        if text.find(name, "/") != null or text.find(name, "\\") != null {
+            skip
+        }
+        collect_files(root, join_path(path, name), found, rules)
+    }
+}
+
+# I/O. Permission and read failures become a skip, not a crash.
+func try_load_text(path, max_bytes) = {
+    if has_binary_extension(path) {
+        give {snapshot: null, bytes: 0}
+    }
+    try {
+        meta = fs.metadata(path)
+        if should_skip_size(meta.size, max_bytes) {
+            give {snapshot: null, bytes: 0}
+        }
+        content = fs.read_file(path)
+        if should_skip_size(len(content), max_bytes) {
+            give {snapshot: null, bytes: 0}
+        }
+        if looks_like_binary(content) {
+            give {snapshot: null, bytes: 0}
+        }
+        give {snapshot: FileSnapshot(path: path, content: content), bytes: meta.size}
+    } else RuntimeError {
+        give {snapshot: null, bytes: 0}
+    }
+}
+
+func load_text_files(paths, max_bytes) = {
+    snapshots := []
+    skipped := 0
+    bytes := 0
+    for p in paths {
+        got = try_load_text(p, max_bytes)
+        if got.snapshot == null {
+            skipped += 1
+        } else {
+            snapshots = snapshots + [got.snapshot]
+            bytes += got.bytes
+        }
+    }
+    give {snapshots: snapshots, skipped: skipped, bytes: bytes}
+}
+
+func relativize_snapshot(root, snap) = FileSnapshot(path: rel_path(root, snap.path), content: snap.content)
+
+func relativize_one(root) = func(snap) = relativize_snapshot(root, snap)
+
+# Independent per snapshot. Pipe is the unary map native J2 already knows.
+func relativize_snapshots(root, snapshots) = snapshots >> relativize_one(root)
+
+func analyze_file(path, content) = analyze_content(path, content)
+
+func analyze_snapshot(snap) = analyze_file(snap.path, snap.content)
+
+func snapshot_path(snap) = snap.path
+
+# Independent analyze_snapshot per file, then one-level concat.
+# This is the file-level parallelizer shape — not a worker pool.
+func analyze_all(snapshots) = flatten(snapshots >> analyze_snapshot)
+
+func snapshot_paths(snapshots) = snapshots >> snapshot_path
+
+func scan_byte_limit(max_bytes) = {
+    if max_bytes <= 0 {
+        give MAX_TEXT_BYTES
+    }
+    give max_bytes
+}
+
+# I/O only: walk, skip ignored names, read text, relativize paths.
+# Does not run detectors.
+func load_tree(root, max_bytes, extra_excludes) = {
+    limit = scan_byte_limit(max_bytes)
+    rules = merge_ignore_rules(read_safeshareignore(root), extra_excludes)
+    discovered = discover_files(root, rules)
+    loaded = load_text_files(discovered, limit)
+    snapshots = relativize_snapshots(root, loaded.snapshots)
+    give {
+        files_discovered: count(discovered),
+        files_scanned: count(snapshots),
+        files_skipped: loaded.skipped,
+        bytes_scanned: loaded.bytes,
+        snapshots: snapshots
+    }
+}
+
+# Pure: independent analyze_all and snapshot_paths, then a map of stats.
+# Native J2 may run those two calls together; both are `=` and share no mutation.
+func complete_scan(loaded) = {
+    findings = analyze_all(loaded.snapshots)
+    paths = snapshot_paths(loaded.snapshots)
+    give {
+        files_discovered: loaded.files_discovered,
+        files_scanned: loaded.files_scanned,
+        files_skipped: loaded.files_skipped,
+        bytes_scanned: loaded.bytes_scanned,
+        findings_count: count(findings),
+        findings: findings,
+        paths: paths
+    }
+}
+
+# CLI helper: filesystem load, then pure analysis.
+func scan_tree(root, max_bytes, extra_excludes) = complete_scan(load_tree(root, max_bytes, extra_excludes))

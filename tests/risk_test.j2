@@ -1,0 +1,76 @@
+import "../src/risk.j2"
+
+func fake_finding(sev, category) = make_finding({
+    rule_id: "test_rule",
+    severity: sev,
+    file: "a.env",
+    line: 1,
+    column: 1,
+    category: category,
+    message: "test",
+    reason: "test",
+    recommendation: "test"
+}, "dummy-value-xx")
+
+empty = score_findings([])
+assert_eq(empty.score, 0)
+assert_eq(empty.label, "LOW RISK")
+
+# One critical credential (secret) strongly lifts the score: 40 + 15 bonus.
+one_key = score_findings([fake_finding(Severity::critical(), "secret")])
+assert_eq(one_key.score, 55)
+assert_eq(one_key.label, "HIGH RISK")
+assert_eq(one_key.credential_bonus, 15)
+
+# High config is weaker than a critical secret.
+one_high = score_findings([fake_finding(Severity::high(), "risky_config")])
+assert_eq(one_high.score, 20)
+assert_eq(one_high.score < one_key.score, true)
+
+# 1 critical + 2 high + 3 medium = 40+28+14 = 82 HIGH RISK (example shape).
+mix := [fake_finding(Severity::critical(), "heuristic")]
+push(mix, fake_finding(Severity::high(), "heuristic"))
+push(mix, fake_finding(Severity::high(), "heuristic"))
+push(mix, fake_finding(Severity::medium(), "heuristic"))
+push(mix, fake_finding(Severity::medium(), "heuristic"))
+push(mix, fake_finding(Severity::medium(), "heuristic"))
+shaped = score_findings(mix)
+assert_eq(shaped.score, 82)
+assert_eq(shaped.label, "HIGH RISK")
+
+text = risk_score_text(shaped)
+assert_eq(contains(text, "Risk score: 82 / 100"), true)
+assert_eq(contains(text, "Assessment: HIGH RISK"), true)
+
+# A hundred low findings cannot outrun the low-band cap (8).
+lows := []
+i := 0
+repeat i < 100 {
+    push(lows, fake_finding(Severity::low(), "risky_config"))
+    i += 1
+}
+flood = score_findings(lows)
+assert_eq(flood.score, 8)
+assert_eq(flood.label, "LOW RISK")
+assert_eq(flood.score < one_key.score, true)
+
+# Same findings, any order → same score.
+rev := [mix[5], mix[4], mix[3], mix[2], mix[1], mix[0]]
+assert_eq(score_findings(rev).score, shaped.score)
+assert_eq(score_findings(rev).label, shaped.label)
+
+# Two identical scans are identical (deterministic).
+assert_eq(score_findings(mix).score, score_findings(mix).score)
+
+# Many critical credentials saturate but stay at 100.
+creds := []
+j := 0
+repeat j < 10 {
+    push(creds, fake_finding(Severity::critical(), "secret"))
+    j += 1
+}
+sat = score_findings(creds)
+assert_eq(sat.score, 100)
+assert_eq(sat.label, "CRITICAL RISK")
+
+print("risk_test ok")

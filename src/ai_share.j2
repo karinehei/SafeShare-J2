@@ -1,0 +1,112 @@
+import "util.j2"
+import "finding.j2"
+
+# AI-share mode: review a tree before pasting it into ChatGPT, Claude,
+# Gemini, Cursor, Copilot, or another assistant. Pure — no filesystem.
+
+func is_ai_share_path(path) = {
+    p = lower(normalize_rel(path))
+    name = lower(basename(p))
+    if name == ".env" or text.starts_with(name, ".env.") {
+        give true
+    }
+    if text.ends_with(name, ".md") or text.ends_with(name, ".json") {
+        give true
+    }
+    if text.ends_with(name, ".yaml") or text.ends_with(name, ".yml") {
+        give true
+    }
+    if text.ends_with(name, ".toml") or text.ends_with(name, ".tfvars") {
+        give true
+    }
+    if contains(p, "/.cursor/") or text.starts_with(p, ".cursor/") or p == ".cursor" {
+        give true
+    }
+    if contains(p, "/.github/") or text.starts_with(p, ".github/") or p == ".github" {
+        give true
+    }
+    if contains(p, "/.vscode/") or text.starts_with(p, ".vscode/") or p == ".vscode" {
+        give true
+    }
+    give false
+}
+
+# Credentials must not be pasted. Config and entropy are warnings, not proof.
+func is_blocking_finding(f) = f.category == "secret" or f.category == "credential"
+
+func count_blocking(findings) = count(findings ? is_blocking_finding)
+
+func finding_cmp_ai(a, b) = {
+    a_ai = is_ai_share_path(a.file)
+    b_ai = is_ai_share_path(b.file)
+    if a_ai != b_ai {
+        if a_ai {
+            give -1
+        }
+        give 1
+    }
+    give finding_cmp(a, b)
+}
+
+func sort_findings_ai(findings) = sort_by(findings, finding_cmp_ai)
+
+func ai_share_file_lines(paths) = {
+    listed := []
+    for p in paths {
+        if is_ai_share_path(p) {
+            push(listed, p)
+        }
+    }
+    lines := ["Files commonly sent to AI assistants:"]
+    if count(listed) == 0 {
+        push(lines, "  (none of the usual assistant-context files were scanned)")
+        give lines
+    }
+    i := 0
+    shown := 0
+    repeat i < count(listed) {
+        if shown >= 20 {
+            push(lines, fmt("  … {} more", count(listed) - shown))
+            give lines
+        }
+        push(lines, fmt("  {}", listed[i]))
+        shown += 1
+        i += 1
+    }
+    give lines
+}
+
+# Never prints "Safe to share: YES". Zero hits is not a clearance.
+func ai_share_assessment_text(findings) = {
+    blocking = count_blocking(findings)
+    warnings = count(findings) - blocking
+    lines := [
+        "AI SHARE ASSESSMENT",
+        "────────────────────────",
+        ""
+    ]
+    if blocking > 0 {
+        push(lines, "Safe to share: NO")
+        push(lines, "")
+        push(lines, fmt("Blocking findings: {}", blocking))
+        push(lines, fmt("Warnings: {}", warnings))
+        push(lines, "")
+        push(lines, "Before sending this project to an AI assistant:")
+        push(lines, "- remove or rotate detected credentials")
+        push(lines, "- inspect configuration findings")
+        push(lines, "- create a sanitized copy if required")
+    } else {
+        push(lines, fmt("Blocking findings: {}", blocking))
+        push(lines, fmt("Warnings: {}", warnings))
+        push(lines, "")
+        push(lines, "No known blocking patterns detected.")
+        push(lines, "This does not guarantee the files contain no sensitive information.")
+        if warnings > 0 {
+            push(lines, "")
+            push(lines, "Before sending this project to an AI assistant:")
+            push(lines, "- inspect configuration findings")
+            push(lines, "- create a sanitized copy if required")
+        }
+    }
+    give join(lines, "\n")
+}

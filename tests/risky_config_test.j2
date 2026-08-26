@@ -1,0 +1,63 @@
+import "../src/rules.j2"
+
+# Isolated positives / negatives. Wording is "potentially risky", never critical.
+
+# --- debug_enabled ---
+dbg = run_one("debug_enabled", "app.env", "DEBUG=true\n")
+assert_eq(count(dbg), 1)
+assert_eq(dbg[0].category, "risky_config")
+assert_eq(dbg[0].severity.name, "low")
+assert_eq(dbg[0].message, "Potentially risky configuration")
+assert_eq(contains(dbg[0].reason, "not a vulnerability"), true)
+assert_eq(contains(dbg[0].to_text(), "DEBUG=true"), true)
+assert_eq(count(run_one("debug_enabled", "app.env", "DEBUG=false\n")), 0)
+assert_eq(count(run_one("debug_enabled", "readme.md", "DEBUG=true\n")), 0)
+
+# YAML / Python / JSON / JS / Docker forms
+assert_eq(count(run_one("debug_enabled", "config.yml", "debug: true\n")), 1)
+assert_eq(count(run_one("debug_enabled", "settings.py", "DEBUG = True\n")), 1)
+assert_eq(count(run_one("debug_enabled", "app.json", "{\"DEBUG\": true}\n")), 1)
+assert_eq(count(run_one("debug_enabled", "config.ts", "const DEBUG = true;\n")), 1)
+assert_eq(count(run_one("debug_enabled", "Dockerfile", "ENV DEBUG=true\n")), 1)
+
+# --- node_env_development ---
+assert_eq(count(run_one("node_env_development", ".env", "NODE_ENV=development\n")), 1)
+assert_eq(run_one("node_env_development", ".env", "NODE_ENV=development\n")[0].severity.name, "low")
+assert_eq(count(run_one("node_env_development", ".env", "NODE_ENV=production\n")), 0)
+assert_eq(count(run_one("node_env_development", "app.json", "{\"NODE_ENV\": \"development\"}\n")), 1)
+
+# --- cors_wildcard ---
+cors = run_one("cors_wildcard", "app.env", "CORS=*\n")
+assert_eq(count(cors), 1)
+assert_eq(cors[0].severity.name, "medium")
+assert_eq(count(run_one("cors_wildcard", "app.env", "CORS=https://app.example.com\n")), 0)
+assert_eq(count(run_one("cors_wildcard", "nginx.json", "{\"Access-Control-Allow-Origin\": \"*\"}\n")), 1)
+
+# --- tls_verification_disabled ---
+tls = run_one("tls_verification_disabled", "app.env", "verify_ssl=false\n")
+assert_eq(count(tls), 1)
+assert_eq(tls[0].severity.name, "high")
+assert_eq(tls[0].severity.name == "critical", false)
+assert_eq(count(run_one("tls_verification_disabled", "app.env", "tls_verify=false\n")), 1)
+assert_eq(count(run_one("tls_verification_disabled", "app.env", "verify_ssl=true\n")), 0)
+assert_eq(count(run_one("tls_verification_disabled", "client.py", "verify_ssl = False\n")), 1)
+assert_eq(count(run_one("tls_verification_disabled", "https.ts", "rejectUnauthorized: false\n")), 1)
+
+# --- authentication_disabled ---
+auth_off = run_one("authentication_disabled", "docker-compose.yml", "authentication: false\n")
+assert_eq(count(auth_off), 1)
+assert_eq(auth_off[0].severity.name, "high")
+assert_eq(count(run_one("authentication_disabled", "app.env", "auth_disabled=true\n")), 1)
+assert_eq(count(run_one("authentication_disabled", "app.env", "authentication=true\n")), 0)
+assert_eq(count(run_one("authentication_disabled", "app.env", "auth_disabled=false\n")), 0)
+
+# Full scan on mixed config still labels the category and does not treat flags as secrets.
+mixed = analyze_content("app.env", "DEBUG=true\nNODE_ENV=development\nCORS=*\nverify_ssl=false\nauthentication=false\n")
+assert_eq(count(mixed) >= 5, true)
+for f in mixed {
+    assert_eq(f.category, "risky_config")
+    assert_eq(f.message, "Potentially risky configuration")
+    assert_eq(f.severity.name == "critical", false)
+}
+
+print("risky_config_test ok")

@@ -1,0 +1,76 @@
+import "../src/rules.j2"
+
+# One positive and one negative case per detector, run in isolation.
+
+# --- aws_access_key_id ---
+aws_pos = "aws_access_key_id = AKIAIOSFODNN7EXAMPLE\n"
+aws_neg = "id = AKIATOOSHORT\nid = akiaiosfodnn7example\n"
+assert_eq(count(run_one("aws_access_key_id", "aws.env", aws_pos)), 1)
+assert_eq(count(run_one("aws_access_key_id", "aws.env", aws_neg)), 0)
+assert_eq(run_one("aws_access_key_id", "aws.env", aws_pos)[0].severity.name, "critical")
+
+# --- github_token ---
+gh_pos = "token = ghp_0123456789abcdef0123456789abcdef1234\n"
+gh_neg = "token = ghp_short\ntoken = github_pat_tooshort\n"
+assert_eq(count(run_one("github_token", "gh.env", gh_pos)), 1)
+assert_eq(count(run_one("github_token", "gh.env", gh_neg)), 0)
+
+# --- openai_style_api_key (heuristic) ---
+oa_pos = "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyzABCDEF\n"
+oa_neg = "key=sk-short\nlabel=skip-ahead-please\nstripe=sk_live_notopenai\n"
+assert_eq(count(run_one("openai_style_api_key", "oa.env", oa_pos)), 1)
+assert_eq(count(run_one("openai_style_api_key", "oa.env", oa_neg)), 0)
+
+# --- google_api_key (heuristic AIza shape) ---
+gg_pos = "key = AIzaSyDummyGoogleApiKey0000000000000000\n"
+gg_neg = "key = AIzaSyShort\nkey = AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+assert_eq(count(run_one("google_api_key", "gg.env", gg_pos)), 1)
+assert_eq(count(run_one("google_api_key", "gg.env", gg_neg)), 0)
+
+# --- jwt_token (heuristic eyJ header, no verification) ---
+jwt_pos = "auth=eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx\n"
+jwt_neg = "ver=1.2.3\npartial=eyJhbGciOi.short.sig\n"
+assert_eq(count(run_one("jwt_token", "jwt.env", jwt_pos)), 1)
+assert_eq(count(run_one("jwt_token", "jwt.env", jwt_neg)), 0)
+
+# --- bearer_token (heuristic) ---
+br_pos = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345\n"
+br_neg = "Authorization: Bearer token\nAuthorization: Bearer x\n"
+assert_eq(count(run_one("bearer_token", "http.txt", br_pos)), 1)
+assert_eq(count(run_one("bearer_token", "http.txt", br_neg)), 0)
+
+# --- pem_private_key ---
+pem_pos = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----\n"
+pem_neg = "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n-----BEGIN CERTIFICATE-----\nMII\n"
+assert_eq(count(run_one("pem_private_key", "id_rsa", pem_pos)), 1)
+assert_eq(count(run_one("pem_private_key", "id_rsa", pem_neg)), 0)
+
+# --- database_url_credentials ---
+db_pos = "DATABASE_URL=postgres://ada:hunter2_secret@db.internal:5432/app\n"
+db_neg = "DATABASE_URL=postgres://localhost:5432/app\nredis://localhost:6379/0\n"
+assert_eq(count(run_one("database_url_credentials", "db.env", db_pos)), 1)
+assert_eq(count(run_one("database_url_credentials", "db.env", db_neg)), 0)
+
+# --- generic_password ---
+pw_pos = "password = hunter2_secret\n"
+pw_neg = "password = changeme\npwd = x\npassword = ${DB_PASS}\n"
+assert_eq(count(run_one("generic_password", "app.env", pw_pos)), 1)
+assert_eq(count(run_one("generic_password", "app.env", pw_neg)), 0)
+
+# --- generic_api_key (api_key / apiKey / API_KEY) ---
+ak_pos = "apiKey = \"sk_live_demo_key_123\"\n"
+ak_neg = "API_KEY=${API_KEY}\napi_key=short\n"
+assert_eq(count(run_one("generic_api_key", "config.py", ak_pos)), 1)
+assert_eq(count(run_one("generic_api_key", "config.py", ak_neg)), 0)
+
+# --- generic_secret_assignment ---
+sec_pos = "client_secret = wJalrXUtnFEMI7MDENG\ntoken = ncs9s8df7s6df5s4df3s2d\n"
+sec_neg = "secret = true\ntoken = 1\ntoken = next\nsecret = ${SECRET}\n"
+assert_eq(count(run_one("generic_secret_assignment", "cfg.env", sec_pos)), 2)
+assert_eq(count(run_one("generic_secret_assignment", "cfg.env", sec_neg)), 0)
+
+# Masked output never reprints the AWS example key.
+aws_hit = run_one("aws_access_key_id", "aws.env", aws_pos)[0]
+assert_eq(contains(aws_hit.to_text(), "AKIAIOSFODNN7EXAMPLE"), false)
+
+print("detectors_test ok")

@@ -1,0 +1,66 @@
+import "../src/rules.j2"
+
+# Shannon entropy: H = -sum p_i log2(p_i). Uniform two-symbol text is 1 bit/char.
+
+assert_eq(round(shannon_entropy("aaaa")), 0)
+assert_eq(round(shannon_entropy("ab")), 1)
+assert_eq(shannon_entropy(""), 0.0)
+
+TOKEN = "nR8vL2qZxP4mK9sW1cY7bH3fT6dG0jA5uE2iO9pQ4wX8kM3n"
+assert_eq(len(TOKEN), 48)
+assert_eq(entropy_suspicious(TOKEN), true)
+assert_eq(shannon_entropy(TOKEN) >= ENTROPY_MIN_BITS, true)
+
+# Natural language, letter-only identifiers, and short values stay quiet.
+assert_eq(entropy_suspicious("The quick brown fox jumps over the lazy dog today"), false)
+assert_eq(entropy_suspicious("SupercalifragilisticexpialidociousWonderfulWorld"), false)
+assert_eq(entropy_suspicious("short-token-value"), false)
+
+# Common digests (MD5 / SHA-1 / SHA-256) and UUIDs are ignored.
+assert_eq(entropy_suspicious("5d41402abc4b2a76b9719d911017c592"), false)
+assert_eq(entropy_suspicious("da39a3ee5e6b4b0d3255bfef95601890afd80709"), false)
+assert_eq(entropy_suspicious("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"), false)
+assert_eq(entropy_suspicious("550e8400-e29b-41d4-a716-446655440000"), false)
+
+# Known credential shapes are left to the regex detectors.
+assert_eq(entropy_suspicious("AKIAIOSFODNN7EXAMPLEKEY12"), false)
+assert_eq(entropy_suspicious("ghp_0123456789abcdef0123456789abcdef1234"), false)
+assert_eq(entropy_suspicious("sk-abcdefghijklmnopqrstuvwxyzABCDEF"), false)
+
+# Assignment form matches the example finding.
+src = text.repeat("\n", 37) + "service_token = \"" + TOKEN + "\"\n"
+hits = detect_high_entropy("src/config.ts", src)
+assert_eq(count(hits), 1)
+hit = hits[0]
+assert_eq(hit.rule_id, "high_entropy_string")
+assert_eq(hit.severity.name, "medium")
+assert_eq(hit.severity.rank, 3)
+assert_eq(hit.file, "src/config.ts")
+assert_eq(hit.line, 38)
+assert_eq(hit.message, "Possible high-entropy credential")
+assert_eq(contains(hit.reason, "service_token"), true)
+assert_eq(contains(hit.reason, "48-character"), true)
+assert_eq(contains(hit.reason, "unusually high entropy"), true)
+assert_eq(contains(hit.reason, "Confidence: heuristic"), true)
+assert_eq(contains(hit.to_text(), TOKEN), false)
+assert_eq(contains(hit.reason, TOKEN), false)
+
+# Full scan includes entropy; isolated regex runs do not.
+full = analyze_content("src/config.ts", src)
+assert_eq(count(full), 1)
+assert_eq(full[0].rule_id, "high_entropy_string")
+assert_eq(count(run_one("generic_secret_assignment", "src/config.ts", src)), 0)
+
+# Hashes and prose in a file produce no entropy findings.
+quiet = """
+checksum = "5d41402abc4b2a76b9719d911017c592"
+note = "The quick brown fox jumps over the lazy dog and then some"
+label = SupercalifragilisticexpialidociousWonderfulWorld
+"""
+assert_eq(count(detect_high_entropy("notes.md", quiet)), 0)
+
+# Quoted duplicate of an assignment is one finding, not two.
+dup = "session_blob = \"" + TOKEN + "\"\n"
+assert_eq(count(detect_high_entropy("cfg.ts", dup)), 1)
+
+print("entropy_test ok")

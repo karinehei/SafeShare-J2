@@ -1,0 +1,728 @@
+import "scanner.j2"
+import "cli.j2"
+
+# Synthetic corpus + ground truth.
+#
+# Every credential is a published example, a sequential dummy, or an
+# alg=none JWT. None of them can authenticate anywhere. Ground truth
+# stores file / line / rule_id only — never the secret bytes.
+#
+# Matching: a scan finding matches an expected record when relative
+# file and rule_id are equal, and expected.line is 0 or equals finding.line.
+
+GROUND_TRUTH_NAME = "SAFESHARE_GROUND_TRUTH.json"
+DEFAULT_CORPUS_REPEAT = 1
+MAX_CORPUS_REPEAT = 200
+
+# AWS docs example. GitHub / OpenAI / Google shapes are dummy alphabets.
+FAKE_AWS = "AKIAIOSFODNN7EXAMPLE"
+FAKE_GITHUB = "ghp_0123456789abcdef0123456789abcdef1234"
+FAKE_OPENAI = "sk-abcdefghijklmnopqrstuvwxyzABCDEF"
+FAKE_GOOGLE = "AIzaSyDummyGoogleApiKey0000000000000000"
+FAKE_JWT = "eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx"
+FAKE_BEARER = "abcdefghijklmnopqrstuvwxyz012345"
+FAKE_DB = "postgres://safeshare_fake:not-a-real-secret@127.0.0.1:5432/safeshare_corpus"
+FAKE_PASSWORD = "safeshare_fake_pw"
+FAKE_APIKEY = "sk_live_demo_key_123"
+FAKE_CLIENT_SECRET = "wJalrXUtnFEMI7MDENG"
+FAKE_TOKEN = "ncs9s8df7s6df5s4df3s2d"
+FAKE_ENTROPY = "nR8vL2qZxP4mK9sW1cY7bH3fT6dG0jA5uE2iO9pQ4wX8kM3n"
+
+func corpus_hit(path, content, rule_id, needle) = {
+    i = text.find(content, needle)
+    if i == null {
+        assert false, fmt("corpus needle missing in {}: {}", path, rule_id)
+    }
+    loc = line_column_at(content, i)
+    give {file: path, line: loc.line, rule_id: rule_id}
+}
+
+func corpus_file(path, content, needles) = {
+    expected := []
+    for n in needles {
+        expected = expected + [corpus_hit(path, content, n.rule_id, n.needle)]
+    }
+    give {path: path, content: content, expected: expected}
+}
+
+func kit_readme() = {
+    path = "README.md"
+    content = """# SafeShare synthetic corpus
+
+All credentials in this tree are **intentionally fake** and unusable
+(AWS documentation examples, sequential dummy tokens, unsigned `alg=none`
+JWTs, loopback database URLs). Do not paste them into a real service.
+
+Ground truth: `SAFESHARE_GROUND_TRUTH.json` (ignored by the scanner).
+Records are `{file, line, rule_id}` only.
+
+```
+j2 run --allow-fs src/main.j2 evaluate .
+j2 run --allow-fs src/main.j2 benchmark .
+```
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_dotenv() = {
+    path = "secrets/.env"
+    content = "# SafeShare corpus — INTENTIONALLY FAKE. Do not use.\n" +
+        "AWS_ACCESS_KEY_ID=" + FAKE_AWS + "\n" +
+        "GITHUB_TOKEN=" + FAKE_GITHUB + "\n" +
+        "OPENAI_API_KEY=" + FAKE_OPENAI + "\n" +
+        "DATABASE_URL=" + FAKE_DB + "\n" +
+        "DEBUG=true\n" +
+        "NODE_ENV=development\n"
+    give corpus_file(path, content, [
+        {rule_id: "aws_access_key_id", needle: FAKE_AWS},
+        {rule_id: "github_token", needle: FAKE_GITHUB},
+        {rule_id: "openai_style_api_key", needle: FAKE_OPENAI},
+        {rule_id: "database_url_credentials", needle: FAKE_DB},
+        {rule_id: "debug_enabled", needle: "DEBUG=true"},
+        {rule_id: "node_env_development", needle: "NODE_ENV=development"}
+    ])
+}
+
+func kit_generic_env() = {
+    path = "secrets/app.env"
+    content = "# INTENTIONALLY FAKE local assignments\n" +
+        "password = " + FAKE_PASSWORD + "\n" +
+        "apiKey = \"" + FAKE_APIKEY + "\"\n" +
+        "client_secret = " + FAKE_CLIENT_SECRET + "\n" +
+        "token = " + FAKE_TOKEN + "\n"
+    give corpus_file(path, content, [
+        {rule_id: "generic_password", needle: FAKE_PASSWORD},
+        {rule_id: "generic_api_key", needle: FAKE_APIKEY},
+        {rule_id: "generic_secret_assignment", needle: FAKE_CLIENT_SECRET},
+        {rule_id: "generic_secret_assignment", needle: FAKE_TOKEN}
+    ])
+}
+
+func kit_google_env() = {
+    path = "secrets/google.env"
+    content = "# Dummy AIza shape — not a Google Cloud key\n" +
+        "GOOGLE_API_KEY=" + FAKE_GOOGLE + "\n"
+    give corpus_file(path, content, [
+        {rule_id: "google_api_key", needle: FAKE_GOOGLE}
+    ])
+}
+
+func kit_placeholders() = {
+    path = "secrets/placeholders.env"
+    content = """# Placeholders the scanner must ignore
+password = changeme
+api_key=${API_KEY}
+pwd=ab
+token = next
+secret = true
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_auth_ts() = {
+    path = "src/auth.ts"
+    content = "// Unsigned alg=none JWT and a dummy Bearer — not valid credentials.\n" +
+        "export const session = \"" + FAKE_JWT + "\"\n" +
+        "export const authHeader = \"Authorization: Bearer " + FAKE_BEARER + "\"\n"
+    give corpus_file(path, content, [
+        {rule_id: "jwt_token", needle: FAKE_JWT},
+        {rule_id: "bearer_token", needle: FAKE_BEARER}
+    ])
+}
+
+func kit_app_ts() = {
+    path = "src/app.ts"
+    content = """export function greet(name: string): string {
+    if (name.length === 0) {
+        return "hello"
+    }
+    return "hello " + name
+}
+
+export const version = "0.1.0"
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_settings_py() = {
+    path = "src/settings.py"
+    content = """# Local development flags only.
+DEBUG = True
+APP_NAME = "safeshare-corpus"
+"""
+    give corpus_file(path, content, [
+        {rule_id: "debug_enabled", needle: "DEBUG = True"}
+    ])
+}
+
+func kit_util_py() = {
+    path = "src/util.py"
+    content = """import hashlib
+
+# Known test digest of "hello" and a UUID — not credentials.
+CHECKSUM = "5d41402abc4b2a76b9719d911017c592"
+USER_ID = "550e8400-e29b-41d4-a716-446655440000"
+
+def fingerprint(s):
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_entropy_ts() = {
+    path = "src/session.ts"
+    content = "// Synthetic high-entropy blob, not a vendor key.\n" +
+        "export const session_blob = \"" + FAKE_ENTROPY + "\"\n"
+    give corpus_file(path, content, [
+        {rule_id: "high_entropy_string", needle: FAKE_ENTROPY}
+    ])
+}
+
+func kit_pem() = {
+    path = "keys/id_rsa"
+    content = """-----BEGIN RSA PRIVATE KEY-----
+THIS-IS-NOT-A-PRIVATE-KEY-SAFESHARE-CORPUS-FAKE
+-----END RSA PRIVATE KEY-----
+"""
+    give corpus_file(path, content, [
+        {rule_id: "pem_private_key", needle: "BEGIN RSA PRIVATE KEY"}
+    ])
+}
+
+func kit_yaml() = {
+    path = "config/app.yaml"
+    content = """# INTENTIONALLY risky local config for detector tests
+service: safeshare-corpus
+CORS: "*"
+verify_ssl: false
+"""
+    give corpus_file(path, content, [
+        {rule_id: "cors_wildcard", needle: "CORS: \"*\""},
+        {rule_id: "tls_verification_disabled", needle: "verify_ssl: false"}
+    ])
+}
+
+func kit_json() = {
+    path = "config/settings.json"
+    content = """{
+  "name": "safeshare-corpus",
+  "DEBUG": true,
+  "authentication": false
+}
+"""
+    give corpus_file(path, content, [
+        {rule_id: "debug_enabled", needle: "\"DEBUG\": true"},
+        {rule_id: "authentication_disabled", needle: "\"authentication\": false"}
+    ])
+}
+
+func kit_clean_yaml() = {
+    path = "config/clean.yaml"
+    content = """name: safeshare
+env: test
+replicas: 1
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_guide_md() = {
+    path = "docs/guide.md"
+    content = """# Sharing this project
+
+This Markdown file has no credentials. It exists so throughput tests
+include documentation and AI-share-style paths.
+
+Do not put live keys in README files or chat pastes.
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_cursor_rules() = {
+    path = ".cursor/rules.md"
+    content = """# Agent instructions (synthetic)
+
+You are helping with SafeShare. Never request production secrets.
+Prefer environment variables over literals.
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_github_agents() = {
+    path = ".github/copilot-instructions.md"
+    content = """# Copilot instructions
+
+Do not invent API keys. Point developers at a secret manager.
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_agents_md() = {
+    path = "AGENTS.md"
+    content = """# Agents
+
+Synthetic instruction file for AI-share path coverage.
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_vscode() = {
+    path = ".vscode/settings.json"
+    content = """{
+  "editor.tabSize": 2,
+  "files.eol": "\\n"
+}
+"""
+    give corpus_file(path, content, [])
+}
+
+func kit_prose() = {
+    path = "docs/prose.md"
+    content = "The quick brown fox jumps over the lazy dog and then some extra filler so this file is clearly ordinary English rather than a credential blob.\n"
+    give corpus_file(path, content, [])
+}
+
+func kit_letter_blob() = {
+    path = "noise/letters.txt"
+    content = "session = SupercalifragilisticexpialidociousWonderfulWorld\n"
+    give corpus_file(path, content, [])
+}
+
+func corpus_kit() = [
+    kit_readme(),
+    kit_dotenv(),
+    kit_generic_env(),
+    kit_google_env(),
+    kit_placeholders(),
+    kit_auth_ts(),
+    kit_app_ts(),
+    kit_settings_py(),
+    kit_util_py(),
+    kit_entropy_ts(),
+    kit_pem(),
+    kit_yaml(),
+    kit_json(),
+    kit_clean_yaml(),
+    kit_guide_md(),
+    kit_cursor_rules(),
+    kit_github_agents(),
+    kit_agents_md(),
+    kit_vscode(),
+    kit_prose(),
+    kit_letter_blob()
+]
+
+func prefix_expected(prefix, expected) = {
+    out := []
+    for e in expected {
+        out = out + [{file: join_path(prefix, e.file), line: e.line, rule_id: e.rule_id}]
+    }
+    give out
+}
+
+func prefix_corpus_file(prefix, f) = {
+    give {
+        path: join_path(prefix, f.path),
+        content: f.content,
+        expected: prefix_expected(prefix, f.expected)
+    }
+}
+
+func expand_corpus_kit(kit, repeat) = {
+    if repeat <= 1 {
+        give kit
+    }
+    out := []
+    i := 0
+    repeat i < repeat {
+        prefix = "r" + str(i)
+        for f in kit {
+            out = out + [prefix_corpus_file(prefix, f)]
+        }
+        i += 1
+    }
+    give out
+}
+
+func kit_expected(files) = {
+    out := []
+    for f in files {
+        out = out + f.expected
+    }
+    give out
+}
+
+func kit_clean_files(files) = {
+    out := []
+    for f in files {
+        if count(f.expected) == 0 {
+            out = out + [f.path]
+        }
+    }
+    give out
+}
+
+func ground_truth_document(files) = {
+    expected = kit_expected(files)
+    give {
+        version: "0.1.0",
+        kind: "safeshare-ground-truth",
+        disclaimer: "All credentials in this corpus are synthetic and unusable. Ground truth never stores secret bytes.",
+        matching: "A finding matches when file and rule_id are equal and expected.line is 0 or equals finding.line.",
+        files: count(files),
+        expected_count: count(expected),
+        expected: expected,
+        clean_files: kit_clean_files(files)
+    }
+}
+
+func finding_matches_expected(f, e) = {
+    if normalize_rel(f.file) != normalize_rel(e.file) {
+        give false
+    }
+    if f.rule_id != e.rule_id {
+        give false
+    }
+    if e.line == 0 {
+        give true
+    }
+    give f.line == e.line
+}
+
+func first_unused_match(e, findings, matched) = {
+    j := 0
+    repeat j < count(findings) {
+        if not contains(matched, j) and finding_matches_expected(findings[j], e) {
+            give j
+        }
+        j += 1
+    }
+    give -1
+}
+
+func compact_hit(file, line, rule_id) = {
+    give {file: file, line: line, rule_id: rule_id}
+}
+
+func hit_cmp(a, b) = {
+    if a.file != b.file {
+        if a.file < b.file {
+            give -1
+        }
+        give 1
+    }
+    if a.rule_id != b.rule_id {
+        if a.rule_id < b.rule_id {
+            give -1
+        }
+        give 1
+    }
+    give a.line - b.line
+}
+
+func sort_hits(hits) = sort_by(hits, hit_cmp)
+
+func prf(tp, fp, fn) = {
+    prec := 0.0
+    rec := 0.0
+    if tp + fp == 0 {
+        if fn == 0 {
+            prec = 1.0
+        }
+    } else {
+        prec = tp / (tp + fp)
+    }
+    if tp + fn == 0 {
+        rec = 1.0
+    } else {
+        rec = tp / (tp + fn)
+    }
+    f1 := 0.0
+    if prec + rec > 0.0 {
+        f1 = (2.0 * prec * rec) / (prec + rec)
+    }
+    give {precision: prec, recall: rec, f1: f1}
+}
+
+func count_rule_id(rows, rule_id) = {
+    n := 0
+    for r in rows {
+        if r.rule_id == rule_id {
+            n += 1
+        }
+    }
+    give n
+}
+
+func detector_ids() = {
+    ids := []
+    for r in builtin_rules() {
+        ids = ids + [r.id]
+    }
+    ids = ids + ["high_entropy_string"]
+    give sort(ids)
+}
+
+func per_rule_row(rule_id, expected, findings, fn_list, fp_list) = {
+    exp = count_rule_id(expected, rule_id)
+    det = count_rule_id(findings, rule_id)
+    fn = count_rule_id(fn_list, rule_id)
+    fp = count_rule_id(fp_list, rule_id)
+    tp = exp - fn
+    m = prf(tp, fp, fn)
+    give {
+        rule_id: rule_id,
+        expected: exp,
+        detected: det,
+        true_positives: tp,
+        false_positives: fp,
+        false_negatives: fn,
+        precision: m.precision,
+        recall: m.recall,
+        f1: m.f1
+    }
+}
+
+func per_rule_stats(expected, findings, fn_list, fp_list) = {
+    rows := []
+    for id in detector_ids() {
+        rows = rows + [per_rule_row(id, expected, findings, fn_list, fp_list)]
+    }
+    give rows
+}
+
+# Pure. expected and findings need .file, .line, .rule_id.
+# Matching order does not change TP/FP/FN when records are unique.
+func score_against_truth(expected, findings) = {
+    ordered_expected = sort_hits(expected)
+    matched := []
+    fn_list := []
+    for e in ordered_expected {
+        j = first_unused_match(e, findings, matched)
+        if j < 0 {
+            fn_list = fn_list + [compact_hit(e.file, e.line, e.rule_id)]
+        } else {
+            matched = matched + [j]
+        }
+    }
+    fp_list := []
+    j := 0
+    repeat j < count(findings) {
+        if not contains(matched, j) {
+            f = findings[j]
+            fp_list = fp_list + [compact_hit(f.file, f.line, f.rule_id)]
+        }
+        j += 1
+    }
+    fn_sorted = sort_hits(fn_list)
+    fp_sorted = sort_hits(fp_list)
+    tp = count(matched)
+    fp = count(fp_sorted)
+    fn = count(fn_sorted)
+    m = prf(tp, fp, fn)
+    rules = per_rule_stats(ordered_expected, findings, fn_sorted, fp_sorted)
+    give {
+        true_positives: tp,
+        false_positives: fp,
+        false_negatives: fn,
+        precision: m.precision,
+        recall: m.recall,
+        f1: m.f1,
+        unmatched_expected: fn_sorted,
+        unmatched_findings: fp_sorted,
+        rules: rules
+    }
+}
+
+func format_ratio(x) = {
+    scaled = round(x * 1000)
+    whole = floor(scaled / 1000)
+    frac = scaled - whole * 1000
+    if frac < 0 {
+        frac = 0 - frac
+    }
+    fs = str(frac)
+    if frac < 10 {
+        fs = "00" + fs
+    } else if frac < 100 {
+        fs = "0" + fs
+    }
+    give str(whole) + "." + fs
+}
+
+func pad_rule_id(s) = {
+    if len(s) >= 28 {
+        give s
+    }
+    give s + text.repeat(" ", 28 - len(s))
+}
+
+func format_rule_row(row) = {
+    give pad_rule_id(row.rule_id) +
+        text.pad_left(str(row.expected), 5) +
+        text.pad_left(str(row.true_positives), 5) +
+        text.pad_left(str(row.false_positives), 5) +
+        text.pad_left(str(row.false_negatives), 5) +
+        text.pad_left(format_ratio(row.precision), 8) +
+        text.pad_left(format_ratio(row.recall), 8) +
+        text.pad_left(format_ratio(row.f1), 8)
+}
+
+func format_evaluate_report(corpus, result, scored) = {
+    lines := [
+        "SafeShare evaluate",
+        "",
+        fmt("Corpus:          {}", corpus),
+        fmt("Files scanned:   {}", result.files_scanned),
+        fmt("Expected:        {}", scored.true_positives + scored.false_negatives),
+        fmt("Findings:        {}", result.findings_count),
+        "",
+        fmt("True positives:  {}", scored.true_positives),
+        fmt("False positives: {}", scored.false_positives),
+        fmt("False negatives: {}", scored.false_negatives),
+        fmt("Precision:       {}", format_ratio(scored.precision)),
+        fmt("Recall:          {}", format_ratio(scored.recall)),
+        fmt("F1:              {}", format_ratio(scored.f1)),
+        "",
+        "Per-rule  (exp / tp / fp / fn / P / R / F1)",
+        pad_rule_id("rule") + text.pad_left("exp", 5) + text.pad_left("tp", 5) + text.pad_left("fp", 5) + text.pad_left("fn", 5) + text.pad_left("P", 8) + text.pad_left("R", 8) + text.pad_left("F1", 8)
+    ]
+    for row in scored.rules {
+        lines = lines + [format_rule_row(row)]
+    }
+    lines = lines + [
+        "",
+        "Placeholders, hashes, UUIDs, and prose are labeled as clean.",
+        "False positives on those files would mean the scanner is matching noise."
+    ]
+    if count(scored.unmatched_findings) > 0 {
+        lines = lines + ["", "Unmatched findings (FP):"]
+        for h in scored.unmatched_findings {
+            lines = lines + [fmt("  {}  {}:{}", h.rule_id, h.file, h.line)]
+        }
+    }
+    if count(scored.unmatched_expected) > 0 {
+        lines = lines + ["", "Missing expected (FN):"]
+        for h in scored.unmatched_expected {
+            lines = lines + [fmt("  {}  {}:{}", h.rule_id, h.file, h.line)]
+        }
+    }
+    give join(lines, "\n")
+}
+
+func evaluate_document(corpus, result, scored) = {
+    give {
+        version: "0.1.0",
+        kind: "safeshare-evaluate",
+        corpus: corpus,
+        files_scanned: result.files_scanned,
+        findings: result.findings_count,
+        expected: scored.true_positives + scored.false_negatives,
+        true_positives: scored.true_positives,
+        false_positives: scored.false_positives,
+        false_negatives: scored.false_negatives,
+        precision: scored.precision,
+        recall: scored.recall,
+        f1: scored.f1,
+        rules: scored.rules,
+        unmatched_expected: scored.unmatched_expected,
+        unmatched_findings: scored.unmatched_findings
+    }
+}
+
+func write_one_corpus_file(dest, f) = {
+    outp = safe_dest_join(dest, f.path)
+    if outp == "" {
+        print("generate-corpus: refused unsafe path")
+        proc.exit(2)
+    }
+    d = dirname(outp)
+    if d != "" and d != "." {
+        fs.mkdir_p(d)
+    }
+    fs.write_file(outp, f.content)
+}
+
+func generate_corpus(dest) = {
+    if not dest_path_is_safe(dest) {
+        print("generate-corpus: choose a folder such as ./benchmark-corpus")
+        proc.exit(2)
+    }
+    argv = program_args(proc.argv())
+    repeat_n = clamp_int(parse_positive_int_flag(argv, "--repeat", DEFAULT_CORPUS_REPEAT), 1, MAX_CORPUS_REPEAT)
+    files = expand_corpus_kit(corpus_kit(), repeat_n)
+    try {
+        fs.mkdir_p(dest)
+    } else RuntimeError {
+        print("cannot create corpus directory")
+        proc.exit(2)
+    }
+    try {
+        for f in files {
+            write_one_corpus_file(dest, f)
+        }
+        truth = ground_truth_document(files)
+        report_path = join_path(dest, GROUND_TRUTH_NAME)
+        if not path_is_inside(dest, report_path) {
+            print("generate-corpus: refused to write ground truth outside dest")
+            proc.exit(2)
+        }
+        fs.write_file(report_path, json.stringify_pretty(truth))
+    } else RuntimeError {
+        print("could not write corpus files")
+        proc.exit(2)
+    }
+    print("SafeShare generate-corpus")
+    print(fmt("Wrote {} files under {}", count(files), dest))
+    print(fmt("Expected findings: {}", count(kit_expected(files))))
+    print(fmt("Ground truth: {}", GROUND_TRUTH_NAME))
+    print("All embedded credentials are synthetic and unusable.")
+}
+
+func load_ground_truth(root) = {
+    path = join_path(root, GROUND_TRUTH_NAME)
+    try {
+        if not fs.is_file(path) {
+            print(fmt("missing {}", GROUND_TRUTH_NAME))
+            proc.exit(2)
+        }
+        doc = json.parse(fs.read_file(path))
+        give doc
+    } else RuntimeError {
+        print("cannot read ground truth")
+        proc.exit(2)
+    }
+}
+
+func evaluate_corpus(root, max_bytes, extra_excludes, json_out) = {
+    try {
+        if not fs.exists(root) {
+            print(fmt("path not found: {}", root))
+            proc.exit(2)
+        }
+    } else RuntimeError {
+        print("cannot access corpus path")
+        proc.exit(2)
+    }
+    truth = load_ground_truth(root)
+    expected := []
+    for e in truth.expected {
+        expected = expected + [{file: e.file, line: floor(e.line), rule_id: e.rule_id}]
+    }
+    loaded = load_tree(root, max_bytes, extra_excludes)
+    result = complete_scan(loaded)
+    scored = score_against_truth(expected, result.findings)
+    doc = evaluate_document(root, result, scored)
+    print(format_evaluate_report(root, result, scored))
+    print("")
+    print(json.stringify_pretty(doc))
+    if json_out != "" {
+        try {
+            fs.write_file(json_out, json.stringify_pretty(doc))
+            print("")
+            print(fmt("Wrote {}", json_out))
+        } else RuntimeError {
+            print("could not write evaluate JSON")
+            proc.exit(2)
+        }
+    }
+}

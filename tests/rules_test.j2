@@ -1,0 +1,26 @@
+import "../src/rules.j2"
+
+# Engine behaviour (placeholders, applies, fingerprints).
+
+pass_hits = analyze_content("app.env", "password = hunter2_secret\n")
+assert_eq(count(pass_hits), 1)
+assert_eq(pass_hits[0].rule_id, "generic_password")
+assert_eq(contains(pass_hits[0].to_text(), "hunter2_secret"), false)
+
+noise = analyze_content(".env", "password = changeme\napi_key=${API_KEY}\npwd=ab\n")
+assert_eq(count(noise), 0)
+
+clean = analyze_content("readme.md", "# no secrets here\nprint(\"hello\")\n")
+assert_eq(count(clean), 0)
+
+pem_rule = rule_by_id("pem_private_key")
+pem_rule.applies = "\\.pem$"
+pem_src = "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----\n"
+assert_eq(count(analyze_content_with("readme.md", pem_src, [pem_rule])), 0)
+assert_eq(count(analyze_content_with("server.pem", pem_src, [pem_rule])), 1)
+
+a = analyze_content("a.env", "password = hunter2_secret\n")
+b = analyze_content("b.env", "password = hunter2_secret\n")
+assert_eq(a[0].fingerprint, b[0].fingerprint)
+
+print("rules_test ok")
