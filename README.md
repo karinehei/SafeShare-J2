@@ -79,7 +79,7 @@ Each `tests/*_test.j2` is a program of `assert_eq` checks, run with `j2 run` (in
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-15** (Apple Silicon), matching J2 0.1.0. On every push and pull request it:
+GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-latest** (hosted Apple Silicon). J2 0.1.0 is aarch64-darwin only; the install script exits if the runner is not `Darwin/arm64`. On every push and pull request it:
 
 1. Installs J2 from the official [v0.1.0 tarball](https://github.com/JasnamSinghArora/j2/releases/tag/v0.1.0) (`j2-0.1.0-aarch64-apple-darwin.tar.gz`) after checking the published SHA-256.
 2. Checks that committed `.j2` files match `j2 fmt` (stdout vs file; J2 0.1.0 has no `--check`).

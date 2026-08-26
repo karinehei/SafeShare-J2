@@ -28,7 +28,7 @@ permissions:
 jobs:
   measure:
     name: Interpreter vs native analyze
-    runs-on: macos-15
+    runs-on: macos-latest
     timeout-minutes: 90
 
     steps:
