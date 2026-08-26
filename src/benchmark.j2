@@ -115,14 +115,15 @@ func summarize_ms(samples) = {
     }
 }
 
-func rate_block(bytes, findings, elapsed_ms) = {
+func rate_block(bytes, findings, files, elapsed_ms) = {
     mb = mb_per_s(bytes, elapsed_ms)
     fps = per_second(findings, elapsed_ms)
     give {
         elapsed_ms: elapsed_ms,
         elapsed_s: elapsed_ms / 1000.0,
         throughput_mb_s: mb,
-        findings_per_s: fps
+        findings_per_s: fps,
+        files_per_s: per_second(files, elapsed_ms)
     }
 }
 
@@ -141,8 +142,8 @@ func findings_rate_line(findings, elapsed_ms) = {
     give bench_row("Findings/s:", format_fixed_2(per_second(findings, elapsed_ms)))
 }
 
-func phase_document(summ, bytes, findings) = {
-    rates = rate_block(bytes, findings, summ.median_ms)
+func phase_document(summ, bytes, findings, files) = {
+    rates = rate_block(bytes, findings, files, summ.median_ms)
     give {
         trials: summ.trials,
         elapsed_ms_median: summ.median_ms,
@@ -151,7 +152,8 @@ func phase_document(summ, bytes, findings) = {
         elapsed_ms_max: summ.max_ms,
         samples_ms: summ.samples_ms,
         throughput_mb_s: rates.throughput_mb_s,
-        findings_per_s: rates.findings_per_s
+        findings_per_s: rates.findings_per_s,
+        files_per_s: rates.files_per_s
     }
 }
 
@@ -171,8 +173,8 @@ func benchmark_document(corpus, warmup, scan_summ, analyze_summ, loaded, result)
         files_skipped: result.files_skipped,
         bytes: bytes,
         findings: findings,
-        scan: phase_document(scan_summ, bytes, findings),
-        analyze: phase_document(analyze_summ, bytes, findings),
+        scan: phase_document(scan_summ, bytes, findings, result.files_scanned),
+        analyze: phase_document(analyze_summ, bytes, findings, result.files_scanned),
         host: {
             os: sys.os(),
             arch: sys.arch(),
@@ -196,11 +198,14 @@ func format_benchmark_report(doc) = {
         bench_row("Findings:", format_int_commas(doc.findings)),
         "",
         bench_row("Elapsed:", format_seconds(scan.elapsed_ms_median)),
+        bench_row("Elapsed ms:", format_int_commas(floor(scan.elapsed_ms_median))),
+        bench_row("Files/s:", format_fixed_2(scan.files_per_s)),
         bench_row("Throughput:", fmt("{} MB/s", format_fixed_2(scan.throughput_mb_s))),
         findings_rate_line(doc.findings, scan.elapsed_ms_median),
         "",
         bench_row("Analyze:", format_seconds(analyze.elapsed_ms_median)),
         bench_row("Analyze MB/s:", fmt("{} MB/s", format_fixed_2(analyze.throughput_mb_s))),
+        bench_row("Analyze files/s:", format_fixed_2(analyze.files_per_s)),
         "",
         bench_row("Trials:", fmt("{} timed, {} warmup", str(scan.trials), str(doc.warmup))),
         bench_row("Range:", fmt("{} … {}", format_seconds(scan.elapsed_ms_min), format_seconds(scan.elapsed_ms_max))),
@@ -208,7 +213,8 @@ func format_benchmark_report(doc) = {
         "",
         "Elapsed is the median end-to-end scan (load + analyze).",
         "Analyze is in-memory complete_scan only — use that to compare",
-        "`j2 run` (interpreter) with `j2 build` (native) on the same corpus."
+        "`j2 run` (interpreter) with `j2 build` (native) on the same corpus.",
+        "Trials run sequentially; do not time concurrent scans."
     ]
     give join(lines, "\n")
 }

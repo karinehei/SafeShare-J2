@@ -1,0 +1,326 @@
+import "../src/sanitize.j2"
+import "../src/report.j2"
+
+# Family-split regression: exact finding sets after the sibling-call refactor.
+# Does not restructure detectors. Asserts fields, not merely count > 0.
+
+AWS = "AKIAIOSFODNN7EXAMPLE"
+GH = "ghp_0123456789abcdef0123456789abcdef1234"
+TOKEN = "nR8vL2qZxP4mK9sW1cY7bH3fT6dG0jA5uE2iO9pQ4wX8kM3n"
+PW = "hunter2_secret"
+APIKEY = "sk_live_demo_key_123"
+CLIENT = "wJalrXUtnFEMI7MDENG"
+BEARER = "abcdefghijklmnopqrstuvwxyz012345"
+DB = "postgres://ada:hunter2_secret@db.internal:5432/app"
+
+func finding_named(hits, rule_id) = {
+    for h in hits {
+        if h.rule_id == rule_id {
+            give h
+        }
+    }
+    assert false, fmt("expected finding {}", rule_id)
+}
+
+func count_named(hits, rule_id) = count(hits ? (func(h) = h.rule_id == rule_id))
+
+func fingerprint_key(hits) = {
+    parts := []
+    for h in sort_findings(hits) {
+        parts = parts + [h.fingerprint]
+    }
+    give join(parts, ",")
+}
+
+func order_key(hits) = {
+    parts := []
+    for h in sort_findings(hits) {
+        parts = parts + [fmt("{}:{}:{}", h.rule_id, h.file, h.line)]
+    }
+    give join(parts, "|")
+}
+
+func report_json_of(path, content) = {
+    snap = FileSnapshot(path: path, content: content)
+    hits = analyze_snapshot(snap)
+    give scan_report_json({
+        files_discovered: 1,
+        files_scanned: 1,
+        files_skipped: 0,
+        bytes_scanned: len(content),
+        findings_count: count(hits),
+        findings: hits,
+        paths: [path]
+    })
+}
+
+func expect_loc(content, needle, hit) = {
+    i = text.find(content, needle)
+    loc = line_column_at(content, i)
+    assert_eq(hit.line, loc.line)
+    assert_eq(hit.column, loc.column)
+    give true
+}
+
+# --- known token detection ---
+known_src = "AWS_ACCESS_KEY_ID=" + AWS + "\nGITHUB_TOKEN=" + GH + "\n"
+known_snap = FileSnapshot(path: "tokens.env", content: known_src)
+known = detect_known_token_formats(known_snap)
+assert_eq(count(known), 2)
+assert_eq(count_named(known, "aws_access_key_id"), 1)
+assert_eq(count_named(known, "github_token"), 1)
+assert_eq(count(detect_private_keys(known_snap)), 0)
+assert_eq(count(detect_database_credentials(known_snap)), 0)
+assert_eq(count(detect_entropy(known_snap)), 0)
+assert_eq(count(detect_risky_config(known_snap)), 0)
+assert_eq(count(detect_sensitive_data(known_snap)), 0)
+assert_eq(count(analyze_snapshot(known_snap)), 2)
+
+aws_hit = finding_named(known, "aws_access_key_id")
+assert_eq(aws_hit.severity.name, "critical")
+assert_eq(aws_hit.category, "secret")
+assert_eq(aws_hit.file, "tokens.env")
+assert_eq(aws_hit.fingerprint, finding_fingerprint("aws_access_key_id", AWS))
+assert_eq(aws_hit.masked_value, mask_secret(AWS))
+assert_eq(contains(aws_hit.masked_value, AWS), false)
+expect_loc(known_src, "AKIA", aws_hit)
+
+gh_hit = finding_named(known, "github_token")
+assert_eq(gh_hit.severity.name, "critical")
+assert_eq(gh_hit.category, "secret")
+assert_eq(gh_hit.file, "tokens.env")
+assert_eq(gh_hit.fingerprint, finding_fingerprint("github_token", GH))
+assert_eq(gh_hit.masked_value, mask_secret(GH))
+expect_loc(known_src, "ghp_", gh_hit)
+
+# Same secret + rule → stable fingerprint across files.
+again_aws = detect_known_token_formats(FileSnapshot(path: "other.env", content: "KEY=" + AWS + "\n"))
+assert_eq(again_aws[0].fingerprint, aws_hit.fingerprint)
+assert_eq(again_aws[0].file, "other.env")
+
+# --- secret assignments ---
+assign_src = "password = " + PW + "\napiKey = \"" + APIKEY + "\"\nclient_secret = " + CLIENT + "\n"
+assign_snap = FileSnapshot(path: "app.env", content: assign_src)
+assign = detect_sensitive_data(assign_snap)
+assert_eq(count(assign), 3)
+assert_eq(count_named(assign, "generic_password"), 1)
+assert_eq(count_named(assign, "generic_api_key"), 1)
+assert_eq(count_named(assign, "generic_secret_assignment"), 1)
+assert_eq(count(detect_known_token_formats(assign_snap)), 0)
+assert_eq(count(analyze_snapshot(assign_snap)), 3)
+
+pw_hit = finding_named(assign, "generic_password")
+assert_eq(pw_hit.severity.name, "high")
+assert_eq(pw_hit.category, "credential")
+assert_eq(pw_hit.file, "app.env")
+assert_eq(pw_hit.fingerprint, finding_fingerprint("generic_password", PW))
+assert_eq(contains(pw_hit.masked_value, PW), false)
+expect_loc(assign_src, "password", pw_hit)
+
+ak_hit = finding_named(assign, "generic_api_key")
+assert_eq(ak_hit.fingerprint, finding_fingerprint("generic_api_key", APIKEY))
+expect_loc(assign_src, "apiKey", ak_hit)
+
+sec_hit = finding_named(assign, "generic_secret_assignment")
+assert_eq(sec_hit.fingerprint, finding_fingerprint("generic_secret_assignment", CLIENT))
+expect_loc(assign_src, "client_secret", sec_hit)
+
+# --- PEM private keys ---
+pem_src = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEASECRETMATERIAL\n-----END RSA PRIVATE KEY-----\n"
+pem_snap = FileSnapshot(path: "keys/id_rsa", content: pem_src)
+pem = detect_private_keys(pem_snap)
+assert_eq(count(pem), 1)
+assert_eq(pem[0].rule_id, "pem_private_key")
+assert_eq(pem[0].severity.name, "critical")
+assert_eq(pem[0].category, "secret")
+assert_eq(pem[0].file, "keys/id_rsa")
+assert_eq(pem[0].line, 1)
+assert_eq(count(detect_known_token_formats(pem_snap)), 0)
+assert_eq(count(analyze_snapshot(pem_snap)), 1)
+expect_loc(pem_src, "-----BEGIN", pem[0])
+assert_eq(contains(pem[0].to_text(), "SECRETMATERIAL"), false)
+
+# --- database credentials ---
+db_src = "DATABASE_URL=" + DB + "\n"
+db_snap = FileSnapshot(path: "db.env", content: db_src)
+db_hits = detect_database_credentials(db_snap)
+assert_eq(count(db_hits), 1)
+assert_eq(db_hits[0].rule_id, "database_url_credentials")
+assert_eq(db_hits[0].severity.name, "critical")
+assert_eq(db_hits[0].category, "credential")
+assert_eq(db_hits[0].file, "db.env")
+assert_eq(count(analyze_snapshot(db_snap)), 1)
+expect_loc(db_src, "postgres://", db_hits[0])
+assert_eq(contains(db_hits[0].masked_value, "hunter2_secret"), false)
+
+# --- entropy detector ---
+ent_src = "service_blob = \"" + TOKEN + "\"\n"
+ent_snap = FileSnapshot(path: "src/config.ts", content: ent_src)
+ent = detect_entropy(ent_snap)
+assert_eq(count(ent), 1)
+assert_eq(ent[0].rule_id, "high_entropy_string")
+assert_eq(ent[0].severity.name, "medium")
+assert_eq(ent[0].category, "heuristic")
+assert_eq(ent[0].file, "src/config.ts")
+assert_eq(ent[0].line, 1)
+assert_eq(ent[0].fingerprint, finding_fingerprint("high_entropy_string", TOKEN))
+assert_eq(contains(ent[0].masked_value, TOKEN), false)
+assert_eq(count(detect_sensitive_data(ent_snap)), 0)
+assert_eq(count(analyze_snapshot(ent_snap)), 1)
+expect_loc(ent_src, "service_blob", ent[0])
+
+# --- risky configuration ---
+cfg_src = "DEBUG=true\n"
+cfg_snap = FileSnapshot(path: ".env", content: cfg_src)
+cfg = detect_risky_config(cfg_snap)
+assert_eq(count(cfg), 1)
+assert_eq(cfg[0].rule_id, "debug_enabled")
+assert_eq(cfg[0].severity.name, "low")
+assert_eq(cfg[0].category, "risky_config")
+assert_eq(cfg[0].file, ".env")
+assert_eq(cfg[0].masked_value, "")
+assert_eq(count(detect_known_token_formats(cfg_snap)), 0)
+assert_eq(count(analyze_snapshot(cfg_snap)), 1)
+expect_loc(cfg_src, "DEBUG=true", cfg[0])
+
+# --- sensitive-data detector (bearer) ---
+br_src = "Authorization: Bearer " + BEARER + "\n"
+br_snap = FileSnapshot(path: "http.txt", content: br_src)
+br = detect_sensitive_data(br_snap)
+assert_eq(count(br), 1)
+assert_eq(br[0].rule_id, "bearer_token")
+assert_eq(br[0].severity.name, "high")
+assert_eq(br[0].category, "credential")
+assert_eq(br[0].file, "http.txt")
+assert_eq(br[0].fingerprint, finding_fingerprint("bearer_token", BEARER))
+assert_eq(count(detect_known_token_formats(br_snap)), 0)
+assert_eq(count(analyze_snapshot(br_snap)), 1)
+expect_loc(br_src, " Bearer", br[0])
+
+# --- cross-family: one file, four sibling families, each once ---
+mixed_src = "AWS_ACCESS_KEY_ID=" + AWS + "\nDEBUG=true\npassword = " + PW + "\nservice_blob = \"" + TOKEN + "\"\n"
+mixed_snap = FileSnapshot(path: ".env", content: mixed_src)
+mixed_known = detect_known_token_formats(mixed_snap)
+mixed_ent = detect_entropy(mixed_snap)
+mixed_cfg = detect_risky_config(mixed_snap)
+mixed_sens = detect_sensitive_data(mixed_snap)
+assert_eq(count(mixed_known), 1)
+assert_eq(mixed_known[0].rule_id, "aws_access_key_id")
+assert_eq(count(mixed_ent), 1)
+assert_eq(mixed_ent[0].rule_id, "high_entropy_string")
+assert_eq(count(mixed_cfg), 1)
+assert_eq(mixed_cfg[0].rule_id, "debug_enabled")
+assert_eq(count(mixed_sens), 1)
+assert_eq(mixed_sens[0].rule_id, "generic_password")
+assert_eq(count(detect_private_keys(mixed_snap)), 0)
+assert_eq(count(detect_database_credentials(mixed_snap)), 0)
+
+mixed = analyze_snapshot(mixed_snap)
+assert_eq(count(mixed), 4)
+assert_eq(count_named(mixed, "aws_access_key_id"), 1)
+assert_eq(count_named(mixed, "high_entropy_string"), 1)
+assert_eq(count_named(mixed, "debug_enabled"), 1)
+assert_eq(count_named(mixed, "generic_password"), 1)
+assert_eq(count(unique_findings_by_fingerprint(mixed)), 4)
+assert_eq(count(detect_secrets(mixed_snap) + mixed_ent + mixed_cfg + mixed_sens), 4)
+
+mixed_aws = finding_named(mixed, "aws_access_key_id")
+assert_eq(mixed_aws.file, ".env")
+assert_eq(mixed_aws.severity.name, "critical")
+expect_loc(mixed_src, "AKIA", mixed_aws)
+expect_loc(mixed_src, "DEBUG=true", finding_named(mixed, "debug_enabled"))
+expect_loc(mixed_src, "password", finding_named(mixed, "generic_password"))
+expect_loc(mixed_src, "service_blob", finding_named(mixed, "high_entropy_string"))
+
+# --- determinism: repeat pure analysis ---
+mixed2 = analyze_snapshot(mixed_snap)
+mixed3 = analyze_snapshot(mixed_snap)
+assert_eq(count(mixed), count(mixed2))
+assert_eq(count(mixed2), count(mixed3))
+assert_eq(fingerprint_key(mixed), fingerprint_key(mixed2))
+assert_eq(fingerprint_key(mixed2), fingerprint_key(mixed3))
+assert_eq(order_key(mixed), order_key(mixed2))
+assert_eq(order_key(mixed2), order_key(mixed3))
+
+r1 = score_findings(mixed)
+r2 = score_findings(mixed2)
+r3 = score_findings(mixed3)
+assert_eq(r1.score, r2.score)
+assert_eq(r2.score, r3.score)
+assert_eq(r1.label, r2.label)
+
+j1 = report_json_of(".env", mixed_src)
+j2 = report_json_of(".env", mixed_src)
+assert_eq(j1, j2)
+assert_eq(contains(j1, AWS), false)
+assert_eq(contains(j1, PW), false)
+assert_eq(contains(j1, TOKEN), false)
+parsed = json.parse(j1)
+assert_eq(parsed.summary.findings, 4)
+assert_eq(parsed.summary.risk_score, r1.score)
+assert_eq(parsed.summary.safe_to_share, false)
+assert_eq(parsed.findings[0].rule_id, "aws_access_key_id")
+assert_eq(order_key(mixed), "aws_access_key_id:.env:1|generic_password:.env:3|high_entropy_string:.env:4|debug_enabled:.env:2")
+
+ai1 = ai_share_assessment_text(mixed)
+ai2 = ai_share_assessment_text(mixed2)
+assert_eq(ai1, ai2)
+assert_eq(contains(ai1, "Safe to share: NO"), true)
+assert_eq(contains(ai1, "Safe to share: YES"), false)
+assert_eq(contains(ai1, AWS), false)
+
+# --- dedup: first-hit-wins, sequential on purpose ---
+spec_a = {
+    rule_id: "generic_password",
+    severity: Severity::high(),
+    file: "first.env",
+    line: 1,
+    column: 1,
+    category: "credential",
+    message: "Hard-coded password",
+    reason: "test",
+    recommendation: "remove"
+}
+spec_b = {
+    rule_id: "generic_password",
+    severity: Severity::high(),
+    file: "second.env",
+    line: 99,
+    column: 4,
+    category: "credential",
+    message: "Hard-coded password",
+    reason: "later",
+    recommendation: "remove"
+}
+spec_c = {
+    rule_id: "generic_password",
+    severity: Severity::high(),
+    file: "third.env",
+    line: 2,
+    column: 1,
+    category: "credential",
+    message: "Hard-coded password",
+    reason: "other",
+    recommendation: "remove"
+}
+dup_a = make_finding(spec_a, PW)
+dup_b = make_finding(spec_b, PW)
+dup_c = make_finding(spec_c, "other_secret_xx")
+assert_eq(dup_a.fingerprint, dup_b.fingerprint)
+assert_eq(dup_a.fingerprint == dup_c.fingerprint, false)
+
+uniq = unique_findings_by_fingerprint([dup_a, dup_b, dup_c])
+assert_eq(count(uniq), 2)
+assert_eq(uniq[0].file, "first.env")
+assert_eq(uniq[0].line, 1)
+assert_eq(uniq[1].file, "third.env")
+
+uniq_rev = unique_findings_by_fingerprint([dup_b, dup_a, dup_c])
+assert_eq(count(uniq_rev), 2)
+assert_eq(uniq_rev[0].file, "second.env")
+assert_eq(uniq_rev[0].line, 99)
+
+assert_eq(count(unique_findings_by_fingerprint([])), 0)
+assert_eq(count(unique_findings_by_fingerprint([dup_c])), 1)
+
+print("family_regression_test ok")

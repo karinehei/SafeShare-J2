@@ -34,17 +34,48 @@ assert_eq(gold.recall, 1.0)
 assert_eq(gold.f1, 1.0)
 assert_eq(count(gold.rules), count(detector_ids()))
 
+# Every detector row carries P/R/F1. Gold kit is complete: no FP/FN.
+for row in gold.rules {
+    assert_eq(row.false_positives, 0)
+    assert_eq(row.false_negatives, 0)
+    assert_eq(row.precision, 1.0)
+    assert_eq(row.recall, 1.0)
+    assert_eq(row.f1, 1.0)
+}
+
 aws_row := null
+gh_row := null
+pem_row := null
+dbg_row := null
 for row in gold.rules {
     if row.rule_id == "aws_access_key_id" {
         aws_row = row
+    }
+    if row.rule_id == "github_token" {
+        gh_row = row
+    }
+    if row.rule_id == "pem_private_key" {
+        pem_row = row
+    }
+    if row.rule_id == "debug_enabled" {
+        dbg_row = row
     }
 }
 assert_eq(aws_row.expected, 1)
 assert_eq(aws_row.true_positives, 1)
 assert_eq(aws_row.false_positives, 0)
 assert_eq(aws_row.false_negatives, 0)
+assert_eq(aws_row.precision, 1.0)
+assert_eq(aws_row.recall, 1.0)
 assert_eq(aws_row.f1, 1.0)
+assert_eq(gh_row.expected, 1)
+assert_eq(gh_row.true_positives, 1)
+assert_eq(gh_row.precision, 1.0)
+assert_eq(gh_row.recall, 1.0)
+assert_eq(pem_row.expected, 1)
+assert_eq(pem_row.true_positives, 1)
+assert_eq(dbg_row.false_positives, 0)
+assert_eq(dbg_row.recall, 1.0)
 
 # Hashes/prose/placeholders: entropy has exactly the labeled hit, no extras.
 ent_row := null
@@ -135,6 +166,7 @@ assert_eq(contains(eval_text, "False negatives:"), true)
 assert_eq(contains(eval_text, "Precision:"), true)
 assert_eq(contains(eval_text, "Recall:"), true)
 assert_eq(contains(eval_text, "F1:"), true)
+assert_eq(contains(eval_text, "Per-rule"), true)
 assert_eq(contains(eval_text, "aws_access_key_id"), true)
 assert_eq(contains(eval_text, "high_entropy_string"), true)
 assert_eq(contains(eval_text, "matching noise"), true)

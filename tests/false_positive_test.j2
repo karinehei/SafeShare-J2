@@ -1,0 +1,70 @@
+import "../src/rules.j2"
+
+# Negative fixtures: resemble secrets but must not fire.
+# A scanner that reports everything is not useful.
+
+func assert_clean(path, content) = {
+    hits = analyze_content(path, content)
+    assert_eq(count(hits), 0)
+    give true
+}
+
+# Example placeholders (literal names the assignment rules skip).
+assert_clean("secrets/placeholders.env", """password = changeme
+api_key=${API_KEY}
+pwd=ab
+token = next
+secret = true
+password = example
+api_key=your_api_key
+token = placeholder
+secret = dummy
+""")
+
+# Documentation snippets: truncated or descriptive, not live key shapes.
+assert_clean("docs/aws.md", """AWS access key ids start with AKIA followed by 16 characters.
+Example prefix only: AKIAIOSFODNN7EXAMPL
+GitHub docs mention ghp_example tokens; that body is too short.
+Do not commit live keys.
+""")
+
+# Ordinary UUIDs and normal hashes (MD5 / SHA-1 / SHA-256).
+assert_clean("src/util.py", """CHECKSUM = "5d41402abc4b2a76b9719d911017c592"
+SHA1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+USER_ID = "550e8400-e29b-41d4-a716-446655440000"
+""")
+
+# Short random-looking strings below entropy and assignment floors.
+assert_clean("app.env", """code = aB3xZ9
+noise = xY9kP2mQ
+session = abcd
+""")
+
+# Public identifiers: package names, prose, public PEM, loopback URLs without passwords.
+assert_clean("pkg.json", """name = lodash
+account = 123456789012
+registry = https://registry.npmjs.org
+""")
+
+assert_clean("id_rsa.pub", """-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
+-----END PUBLIC KEY-----
+-----BEGIN CERTIFICATE-----
+MIIDazCCAlOgAwIBAgIU
+-----END CERTIFICATE-----
+""")
+
+assert_clean("db.env", """DATABASE_URL=postgres://localhost:5432/app
+redis://127.0.0.1:6379/0
+""")
+
+# Letter-only long identifiers are not entropy hits.
+assert_clean("noise/letters.txt", "session = SupercalifragilisticexpialidociousWonderfulWorld\n")
+
+# Full-scan isolation: known-token negatives stay quiet under analyze_snapshot.
+assert_eq(count(analyze_content("aws.env", "id = AKIATOOSHORT\nid = akiaiosfodnn7example\n")), 0)
+assert_eq(count(analyze_content("gh.env", "note = ghp_short\nnote = github_pat_tooshort\n")), 0)
+assert_eq(count(analyze_content("oa.env", "key=sk-short\nstripe=sk_live_notopenai\n")), 0)
+
+print("false_positive_test ok")

@@ -110,4 +110,75 @@ assert_eq(contains(ujs, "../"), false)
 assert_eq(contains(ujs, "unsafe_path"), true)
 assert_eq(contains(ujs, aws), false)
 
+# Multiple high-confidence secrets on one line.
+gh_tok = "ghp_0123456789abcdef0123456789abcdef1234"
+one_line = "AWS=" + aws + " GH=" + gh_tok + "\n"
+one_out = redact_content("pair.env", one_line)
+assert_eq(one_out.replacements, 2)
+assert_eq(contains(one_out.content, aws), false)
+assert_eq(contains(one_out.content, gh_tok), false)
+assert_eq(contains(one_out.content, "[SAFESHARE_REDACTED]"), true)
+assert_eq(contains(one_line, aws), true)
+assert_eq(contains(one_line, gh_tok), true)
+
+# Adjacent lines: two replacements, both secrets gone, surrounding text kept.
+adj = "AWS_KEY=" + aws + "\nGITHUB=" + gh_tok + "\n"
+adj_out = redact_content("adj.env", adj)
+assert_eq(adj_out.replacements, 2)
+assert_eq(contains(adj_out.content, aws), false)
+assert_eq(contains(adj_out.content, gh_tok), false)
+assert_eq(contains(adj_out.content, "AWS_KEY="), true)
+assert_eq(contains(adj_out.content, "GITHUB="), true)
+assert_eq(contains(adj, aws), true)
+
+# Repeated identical secrets: both sites redacted; source string unchanged.
+rep = "K1=" + aws + "\nK2=" + aws + "\n"
+rep_orig = rep
+rep_out = redact_content("rep.env", rep)
+assert_eq(rep, rep_orig)
+assert_eq(contains(rep, aws), true)
+assert_eq(rep_out.replacements, 2)
+assert_eq(contains(rep_out.content, aws), false)
+assert_eq(contains(rep_out.content, "K1=[SAFESHARE_REDACTED]"), true)
+assert_eq(contains(rep_out.content, "K2=[SAFESHARE_REDACTED]"), true)
+
+# Overlapping candidate spans: DB userinfo contains AWS + GitHub shapes.
+# Leftmost span wins; leftover host text must stay intact.
+overlap_src = "DATABASE_URL=postgres://" + aws + ":" + gh_tok + "@db.internal:5432/app\n"
+overlap_out = redact_content("db.env", overlap_src)
+assert_eq(contains(overlap_src, aws), true)
+assert_eq(contains(overlap_out.content, aws), false)
+assert_eq(contains(overlap_out.content, gh_tok), false)
+assert_eq(contains(overlap_out.content, "db.internal"), true)
+assert_eq(contains(overlap_out.content, "postgres://[SAFESHARE_REDACTED]@"), true)
+assert_eq(overlap_out.replacements, 1)
+assert_eq(contains(overlap_out.rule_ids, "database_url_credentials"), true)
+
+# Synthetic overlap fold: first-by-start keeps one span; apply does not scramble.
+kept = non_overlapping_spans([
+    {start: 5, end: 15, replacement: "B", rule_id: "github_token"},
+    {start: 0, end: 10, replacement: "A", rule_id: "aws_access_key_id"}
+])
+assert_eq(count(kept), 1)
+assert_eq(kept[0].start, 0)
+assert_eq(kept[0].rule_id, "aws_access_key_id")
+assert_eq(apply_redact_spans("0123456789XXXXX", kept), "AXXXXX")
+
+touching = non_overlapping_spans([
+    {start: 0, end: 3, replacement: "A", rule_id: "aws_access_key_id"},
+    {start: 3, end: 6, replacement: "B", rule_id: "github_token"}
+])
+assert_eq(count(touching), 2)
+assert_eq(apply_redact_spans("abcdef", touching), "AB")
+
+# Heuristic entropy findings must not be auto-redacted.
+ENT = "nR8vL2qZxP4mK9sW1cY7bH3fT6dG0jA5uE2iO9pQ4wX8kM3n"
+ent_src = "service_blob = \"" + ENT + "\"\n"
+assert_eq(count(detect_entropy(FileSnapshot(path: "cfg.ts", content: ent_src))), 1)
+ent_out = redact_content("cfg.ts", ent_src)
+assert_eq(ent_out.modified, false)
+assert_eq(ent_out.replacements, 0)
+assert_eq(contains(ent_out.content, ENT), true)
+assert_eq(contains(ent_src, ENT), true)
+
 print("sanitize_test ok")
