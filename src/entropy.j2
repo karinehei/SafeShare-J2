@@ -19,15 +19,27 @@ ENTROPY_ASSIGN_QUOTED = "([A-Za-z_][A-Za-z0-9_]*)\\s*[=:]\\s*[\"']([^\"']{24,})[
 ENTROPY_ASSIGN_BARE = "([A-Za-z_][A-Za-z0-9_]*)\\s*[=:]\\s*([A-Za-z0-9+/=_\\-.]{24,})"
 ENTROPY_QUOTED = "[\"']([A-Za-z0-9+/=_\\-.]{24,})[\"']"
 
-func count_char(chars, ch) = count(chars ? (_ == ch))
-
-# Independent of other alphabet symbols: H is the sum of these terms.
-func shannon_contribution(chars, n, ch) = {
-    p = count_char(chars, ch) / n
-    give 0.0 - p * log2(p)
+func count_char(chars, needle) = {
+    n := 0
+    i := 0
+    limit = count(chars)
+    repeat true {
+        if i >= limit {
+            give n
+        }
+        if chars[i] == needle {
+            n += 1
+        }
+        i += 1
+    }
+    give n
 }
 
-func shannon_term(chars, n) = func(ch) = shannon_contribution(chars, n, ch)
+# Independent of other alphabet symbols: H is the sum of these terms.
+func shannon_contribution(chars, n, glyph) = {
+    p = count_char(chars, glyph) / n
+    give 0.0 - p * log2(p)
+}
 
 func shannon_entropy(s) = {
     n = len(s)
@@ -35,7 +47,18 @@ func shannon_entropy(s) = {
         give 0.0
     }
     chars = text.chars(s)
-    give sum(unique(chars) >> shannon_term(chars, n))
+    uniq = unique(chars)
+    total := 0.0
+    i := 0
+    limit = count(uniq)
+    repeat true {
+        if i >= limit {
+            give total
+        }
+        total = total + shannon_contribution(chars, n, uniq[i])
+        i += 1
+    }
+    give total
 }
 
 func unique_ratio(s) = {

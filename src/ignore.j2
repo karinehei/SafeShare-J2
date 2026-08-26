@@ -44,7 +44,17 @@ func parse_ignore_line(line) = {
 
 func parse_ignore_line_cr(line) = parse_ignore_line(text.replace(line, "\r", ""))
 
-func parse_ignore_rules(body) = split(body, "\n") >> parse_ignore_line_cr ? (_ != null)
+# `_` in `seq ? (_ != null)` does not bind on 0.1.0, so nulls stayed in the seq.
+func parse_ignore_rules(body) = {
+    out := []
+    for line in split(body, "\n") {
+        rule = parse_ignore_line_cr(line)
+        if rule != null {
+            out = out + [rule]
+        }
+    }
+    give out
+}
 
 func skip_dir_ignore_name(name) = name != "." and name != ".."
 

@@ -2,15 +2,19 @@
 
 DEFAULT_MAX_TEXT_BYTES = 1_000_000
 
-# `repeat` is a loop keyword, so text.repeat is a SyntaxError (got Repeat).
-# `1..n` is not used here: endpoint rules are easy to get wrong, and `_`
-# is not a reliable loop variable on 0.1.0.
+# Repeat s, n times. Drive the loop by output length, not a counter:
+# `repeat i < n` was one copy short on J2 0.1.0.
 func times_text(s, n) = {
+    if n <= 0 {
+        give ""
+    }
     out := ""
-    i := 0
-    repeat i < n {
+    target = n * len(s)
+    repeat true {
+        if len(out) >= target {
+            give out
+        }
         out = out + s
-        i += 1
     }
     give out
 }
