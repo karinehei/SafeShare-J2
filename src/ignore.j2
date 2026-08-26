@@ -61,7 +61,16 @@ func skip_dir_ignore_name(name) = name != "." and name != ".."
 func ignore_from_skip_dir(name) = parse_ignore_line(name + "/")
 
 func builtin_ignore_rules() = {
-    give ((SKIP_DIR_NAMES ? skip_dir_ignore_name) >> ignore_from_skip_dir) + [
+    out := []
+    i := 0
+    repeat i < count(SKIP_DIR_NAMES) {
+        name = SKIP_DIR_NAMES[i]
+        if skip_dir_ignore_name(name) {
+            out = out + [ignore_from_skip_dir(name)]
+        }
+        i += 1
+    }
+    give out + [
         parse_ignore_line("SANITIZATION_REPORT.json"),
         parse_ignore_line("SAFESHARE_GROUND_TRUTH.json")
     ]

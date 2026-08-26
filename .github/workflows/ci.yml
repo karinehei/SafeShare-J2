@@ -72,7 +72,11 @@ jobs:
       - name: Native build
         run: |
           set -euo pipefail
-          j2 build src/main.j2 -o safeshare
+          if ! j2 build src/main.j2 -o safeshare; then
+            echo "native build failed; compiler diagnostics follow"
+            J2_DEBUG=1 j2 build src/main.j2 -o "${RUNNER_TEMP}/safeshare-debug" || true
+            exit 1
+          fi
           test -f ./safeshare
           test -x ./safeshare
           # Capability grant is a J2 runtime flag. Native binaries may still

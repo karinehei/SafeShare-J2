@@ -252,10 +252,15 @@ func named_entropy_record(pat, content, m) = {
     give [{start: m.start, name: g[0], raw: g[1]}]
 }
 
-func named_from_pattern(pat, content) = func(m) = named_entropy_record(pat, content, m)
-
 func named_entropy_candidates(content, pat) = {
-    give flatten(regex.find_all(pat, content) >> named_from_pattern(pat, content))
+    matches = regex.find_all(pat, content)
+    out := []
+    i := 0
+    repeat i < count(matches) {
+        out = out + named_entropy_record(pat, content, matches[i])
+        i += 1
+    }
+    give out
 }
 
 func quoted_candidate_raw(m, g) = {
@@ -270,10 +275,15 @@ func quoted_entropy_record(content, m) = {
     give {start: m.start, name: "(quoted)", raw: quoted_candidate_raw(m, g)}
 }
 
-func quoted_from_content(content) = func(m) = quoted_entropy_record(content, m)
-
 func quoted_entropy_candidates(content) = {
-    give regex.find_all(ENTROPY_QUOTED, content) >> quoted_from_content(content)
+    matches = regex.find_all(ENTROPY_QUOTED, content)
+    out := []
+    i := 0
+    repeat i < count(matches) {
+        out = out + [quoted_entropy_record(content, matches[i])]
+        i += 1
+    }
+    give out
 }
 
 # Three independent regex passes, then an associative concat.
@@ -300,21 +310,26 @@ func entropy_from_candidate(path, content, pem, cand) = {
 func unique_findings_by_fingerprint(findings) = {
     out := []
     seen := []
-    for f in findings {
-        if contains(seen, f.fingerprint) {
-            skip
+    i := 0
+    repeat i < count(findings) {
+        f = findings[i]
+        if not contains(seen, f.fingerprint) {
+            seen = seen + [f.fingerprint]
+            out = out + [f]
         }
-        seen = seen + [f.fingerprint]
-        out = out + [f]
+        i += 1
     }
     give out
 }
 
-func entropy_on_file(path, content, pem) = func(cand) = entropy_from_candidate(path, content, pem, cand)
-
-# Per-candidate calls are independent. Dedup by fingerprint is sequential on purpose.
 func detect_high_entropy(path, content) = {
     pem = regex.match("-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", content)
-    hits = flatten(entropy_candidates(content) >> entropy_on_file(path, content, pem))
+    cands = entropy_candidates(content)
+    hits := []
+    i := 0
+    repeat i < count(cands) {
+        hits = hits + entropy_from_candidate(path, content, pem, cands[i])
+        i += 1
+    }
     give unique_findings_by_fingerprint(hits)
 }

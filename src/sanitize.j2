@@ -110,12 +110,14 @@ func non_overlapping_spans(spans) = {
     ordered = sort_by(spans, span_start_asc)
     kept := []
     last_end := 0
-    for s in ordered {
-        if s.start < last_end {
-            skip
+    i := 0
+    repeat i < count(ordered) {
+        s = ordered[i]
+        if s.start >= last_end {
+            kept = kept + [s]
+            last_end = s.end
         }
-        kept = kept + [s]
-        last_end = s.end
+        i += 1
     }
     give kept
 }
@@ -168,11 +170,13 @@ func apply_redact_spans(content, spans) = {
 
 func span_rule_ids(spans) = {
     ids := []
-    for s in spans {
-        if contains(ids, s.rule_id) {
-            skip
+    i := 0
+    repeat i < count(spans) {
+        rid = spans[i].rule_id
+        if not contains(ids, rid) {
+            ids = ids + [rid]
         }
-        ids = ids + [s.rule_id]
+        i += 1
     }
     give ids
 }

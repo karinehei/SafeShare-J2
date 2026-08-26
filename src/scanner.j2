@@ -101,14 +101,15 @@ func collect_files(root, path, found, rules) = {
     } else RuntimeError {
         give
     }
-    for name in names {
-        if name == "" or name == "." or name == ".." {
-            skip
+    i := 0
+    repeat i < count(names) {
+        name = names[i]
+        if name != "" and name != "." and name != ".." {
+            if text.find(name, "/") == null and text.find(name, "\\") == null {
+                collect_files(root, join_path(path, name), found, rules)
+            }
         }
-        if text.find(name, "/") != null or text.find(name, "\\") != null {
-            skip
-        }
-        collect_files(root, join_path(path, name), found, rules)
+        i += 1
     }
 }
 
@@ -154,21 +155,39 @@ func load_text_files(paths, max_bytes) = {
 
 func relativize_snapshot(root, snap) = FileSnapshot(path: rel_path(root, snap.path), content: snap.content)
 
-func relativize_one(root) = func(snap) = relativize_snapshot(root, snap)
-
-# Independent per snapshot. Pure map; not a documented parallelizer idiom.
-func relativize_snapshots(root, snapshots) = snapshots >> relativize_one(root)
+func relativize_snapshots(root, snapshots) = {
+    out := []
+    i := 0
+    repeat i < count(snapshots) {
+        out = out + [relativize_snapshot(root, snapshots[i])]
+        i += 1
+    }
+    give out
+}
 
 func analyze_file(path, content) = analyze_content(path, content)
 
 func snapshot_path(snap) = snap.path
 
-# Per-file map then concat. Pure and deterministic. Not a documented J2
-# parallelizer shape (that is sibling pure calls, or an element-wise index
-# loop). The compiler may leave this serial; that is expected for small N.
-func analyze_all(snapshots) = flatten(snapshots >> analyze_snapshot)
+func analyze_all(snapshots) = {
+    out := []
+    i := 0
+    repeat i < count(snapshots) {
+        out = out + analyze_snapshot(snapshots[i])
+        i += 1
+    }
+    give out
+}
 
-func snapshot_paths(snapshots) = snapshots >> snapshot_path
+func snapshot_paths(snapshots) = {
+    out := []
+    i := 0
+    repeat i < count(snapshots) {
+        out = out + [snapshot_path(snapshots[i])]
+        i += 1
+    }
+    give out
+}
 
 func scan_byte_limit(max_bytes) = {
     if max_bytes <= 0 {
