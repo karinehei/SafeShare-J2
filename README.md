@@ -293,3 +293,9 @@ In roughly this order, without pretending they are done:
 4. Print the existing “shape is not proof” disclaimer on each terminal finding; wire `--ai-share` assessment into the scan report.
 5. Type annotations on the hot path (`FileSnapshot`, `Finding`, entropy) so `j2 build` has more to specialize.
 6. If J2 gains `lstat` / `realpath`, use them. Until then, document follow-symlink behavior rather than claiming a sandbox.
+
+## License
+
+Copyright 2026 Karine Heinonen
+
+Licensed under the Apache License, Version 2.0. You may not use this project except in compliance with the License. See [LICENSE](LICENSE) and [NOTICE](NOTICE). A copy of the license is also at [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0).
