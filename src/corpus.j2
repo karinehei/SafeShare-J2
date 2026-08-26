@@ -18,7 +18,8 @@ MAX_CORPUS_REPEAT = 200
 FAKE_AWS = "AKIAIOSFODNN7EXAMPLE"
 FAKE_GITHUB = "ghp_0123456789abcdef0123456789abcdef1234"
 FAKE_OPENAI = "sk-abcdefghijklmnopqrstuvwxyzABCDEF"
-FAKE_GOOGLE = "AIzaSyDummyGoogleApiKey0000000000000000"
+# Split so GitHub secret scanning does not treat this dummy as a live Google key.
+FAKE_GOOGLE = "AIza" + "SyDummyGoogleApiKey0000000000000000"
 FAKE_JWT = "eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx"
 FAKE_BEARER = "abcdefghijklmnopqrstuvwxyz012345"
 FAKE_DB = "postgres://safeshare_fake:not-a-real-secret@127.0.0.1:5432/safeshare_corpus"
