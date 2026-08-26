@@ -2,38 +2,38 @@ import "../src/report.j2"
 
 raw = "sk-1234567890abcdefghijkl"
 hit = make_finding({
-    rule_id: "openai_style_api_key",
-    severity: Severity::critical(),
-    file: ".env",
-    line: 3,
-    column: 1,
-    category: "secret",
-    message: "OpenAI API key detected",
-    reason: "heuristic",
-    recommendation: "Remove the credential from the file and rotate it."
-}, raw)
+        rule_id: "openai_style_api_key",
+        severity: Severity::critical(),
+        file: ".env",
+        line: 3,
+        column: 1,
+        category: "secret",
+        message: "OpenAI API key detected",
+        reason: "heuristic",
+        recommendation: "Remove the credential from the file and rotate it."
+    }, raw)
 
 db = make_finding({
-    rule_id: "database_url_credentials",
-    severity: Severity::high(),
-    file: "config/database.env",
-    line: 8,
-    column: 1,
-    category: "credential",
-    message: "Database URL contains credentials",
-    reason: "userinfo",
-    recommendation: "Rotate the database password"
-}, "postgres://ada:hunter2_secret@db")
+        rule_id: "database_url_credentials",
+        severity: Severity::high(),
+        file: "config/database.env",
+        line: 8,
+        column: 1,
+        category: "credential",
+        message: "Database URL contains credentials",
+        reason: "userinfo",
+        recommendation: "Rotate the database password"
+    }, "postgres://ada:hunter2_secret@db")
 
 low = make_config_finding({
-    rule_id: "debug_enabled",
-    severity: Severity::low(),
-    file: "app.env",
-    line: 1,
-    column: 1,
-    reason: "DEBUG",
-    recommendation: "Keep debug off when sharing"
-}, "DEBUG=true")
+        rule_id: "debug_enabled",
+        severity: Severity::low(),
+        file: "app.env",
+        line: 1,
+        column: 1,
+        reason: "DEBUG",
+        recommendation: "Keep debug off when sharing"
+    }, "DEBUG=true")
 
 result = {
     files_discovered: 465,

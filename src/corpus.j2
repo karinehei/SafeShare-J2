@@ -47,231 +47,158 @@ func corpus_file(path, content, needles) = {
 
 func kit_readme() = {
     path = "README.md"
-    content = """# SafeShare synthetic corpus
-
-All credentials in this tree are **intentionally fake** and unusable
-(AWS documentation examples, sequential dummy tokens, unsigned `alg=none`
-JWTs, loopback database URLs). Do not paste them into a real service.
-
-Ground truth: `SAFESHARE_GROUND_TRUTH.json` (ignored by the scanner).
-Records are `{file, line, rule_id}` only.
-
-```
-j2 run --allow-fs src/main.j2 evaluate .
-j2 run --allow-fs src/main.j2 benchmark .
-```
-"""
+    content = "# SafeShare synthetic corpus\n\nAll credentials in this tree are **intentionally fake** and unusable\n(AWS documentation examples, sequential dummy tokens, unsigned `alg=none`\nJWTs, loopback database URLs). Do not paste them into a real service.\n\nGround truth: `SAFESHARE_GROUND_TRUTH.json` (ignored by the scanner).\nRecords are `{file, line, rule_id}` only.\n\n```\nj2 run --allow-fs src/main.j2 evaluate .\nj2 run --allow-fs src/main.j2 benchmark .\n```\n"
     give corpus_file(path, content, [])
 }
 
 func kit_dotenv() = {
     path = "secrets/.env"
     content = "# SafeShare corpus — INTENTIONALLY FAKE. Do not use.\n" +
-        "AWS_ACCESS_KEY_ID=" + FAKE_AWS + "\n" +
-        "GITHUB_TOKEN=" + FAKE_GITHUB + "\n" +
-        "OPENAI_API_KEY=" + FAKE_OPENAI + "\n" +
-        "DATABASE_URL=" + FAKE_DB + "\n" +
-        "DEBUG=true\n" +
-        "NODE_ENV=development\n"
+    "AWS_ACCESS_KEY_ID=" + FAKE_AWS + "\n" +
+    "GITHUB_TOKEN=" + FAKE_GITHUB + "\n" +
+    "OPENAI_API_KEY=" + FAKE_OPENAI + "\n" +
+    "DATABASE_URL=" + FAKE_DB + "\n" +
+    "DEBUG=true\n" +
+    "NODE_ENV=development\n"
     give corpus_file(path, content, [
-        {rule_id: "aws_access_key_id", needle: FAKE_AWS},
-        {rule_id: "github_token", needle: FAKE_GITHUB},
-        {rule_id: "openai_style_api_key", needle: FAKE_OPENAI},
-        {rule_id: "database_url_credentials", needle: FAKE_DB},
-        {rule_id: "debug_enabled", needle: "DEBUG=true"},
-        {rule_id: "node_env_development", needle: "NODE_ENV=development"}
+            {rule_id: "aws_access_key_id", needle: FAKE_AWS},
+            {rule_id: "github_token", needle: FAKE_GITHUB},
+            {rule_id: "openai_style_api_key", needle: FAKE_OPENAI},
+            {rule_id: "database_url_credentials", needle: FAKE_DB},
+            {rule_id: "debug_enabled", needle: "DEBUG=true"},
+            {rule_id: "node_env_development", needle: "NODE_ENV=development"}
     ])
 }
 
 func kit_generic_env() = {
     path = "secrets/app.env"
     content = "# INTENTIONALLY FAKE local assignments\n" +
-        "password = " + FAKE_PASSWORD + "\n" +
-        "apiKey = \"" + FAKE_APIKEY + "\"\n" +
-        "client_secret = " + FAKE_CLIENT_SECRET + "\n" +
-        "token = " + FAKE_TOKEN + "\n"
+    "password = " + FAKE_PASSWORD + "\n" +
+    "apiKey = \"" + FAKE_APIKEY + "\"\n" +
+    "client_secret = " + FAKE_CLIENT_SECRET + "\n" +
+    "token = " + FAKE_TOKEN + "\n"
     give corpus_file(path, content, [
-        {rule_id: "generic_password", needle: FAKE_PASSWORD},
-        {rule_id: "generic_api_key", needle: FAKE_APIKEY},
-        {rule_id: "generic_secret_assignment", needle: FAKE_CLIENT_SECRET},
-        {rule_id: "generic_secret_assignment", needle: FAKE_TOKEN}
+            {rule_id: "generic_password", needle: FAKE_PASSWORD},
+            {rule_id: "generic_api_key", needle: FAKE_APIKEY},
+            {rule_id: "generic_secret_assignment", needle: FAKE_CLIENT_SECRET},
+            {rule_id: "generic_secret_assignment", needle: FAKE_TOKEN}
     ])
 }
 
 func kit_google_env() = {
     path = "secrets/google.env"
     content = "# Dummy AIza shape — not a Google Cloud key\n" +
-        "GOOGLE_API_KEY=" + FAKE_GOOGLE + "\n"
+    "GOOGLE_API_KEY=" + FAKE_GOOGLE + "\n"
     give corpus_file(path, content, [
-        {rule_id: "google_api_key", needle: FAKE_GOOGLE}
+            {rule_id: "google_api_key", needle: FAKE_GOOGLE}
     ])
 }
 
 func kit_placeholders() = {
     path = "secrets/placeholders.env"
-    content = """# Placeholders the scanner must ignore
-password = changeme
-api_key=${API_KEY}
-pwd=ab
-token = next
-secret = true
-"""
+    content = "# Placeholders the scanner must ignore\npassword = changeme\napi_key=${API_KEY}\npwd=ab\ntoken = next\nsecret = true\n"
     give corpus_file(path, content, [])
 }
 
 func kit_auth_ts() = {
     path = "src/auth.ts"
     content = "// Unsigned alg=none JWT and a dummy Bearer — not valid credentials.\n" +
-        "export const session = \"" + FAKE_JWT + "\"\n" +
-        "export const authHeader = \"Authorization: Bearer " + FAKE_BEARER + "\"\n"
+    "export const session = \"" + FAKE_JWT + "\"\n" +
+    "export const authHeader = \"Authorization: Bearer " + FAKE_BEARER + "\"\n"
     give corpus_file(path, content, [
-        {rule_id: "jwt_token", needle: FAKE_JWT},
-        {rule_id: "bearer_token", needle: FAKE_BEARER}
+            {rule_id: "jwt_token", needle: FAKE_JWT},
+            {rule_id: "bearer_token", needle: FAKE_BEARER}
     ])
 }
 
 func kit_app_ts() = {
     path = "src/app.ts"
-    content = """export function greet(name: string): string {
-    if (name.length === 0) {
-        return "hello"
-    }
-    return "hello " + name
-}
-
-export const version = "0.1.0"
-"""
+    content = "export function greet(name: string): string {\n    if (name.length === 0) {\n        return \"hello\"\n    }\n    return \"hello \" + name\n}\n\nexport const version = \"0.1.0\"\n"
     give corpus_file(path, content, [])
 }
 
 func kit_settings_py() = {
     path = "src/settings.py"
-    content = """# Local development flags only.
-DEBUG = True
-APP_NAME = "safeshare-corpus"
-"""
+    content = "# Local development flags only.\nDEBUG = True\nAPP_NAME = \"safeshare-corpus\"\n"
     give corpus_file(path, content, [
-        {rule_id: "debug_enabled", needle: "DEBUG = True"}
+            {rule_id: "debug_enabled", needle: "DEBUG = True"}
     ])
 }
 
 func kit_util_py() = {
     path = "src/util.py"
-    content = """import hashlib
-
-# Known test digest of "hello" and a UUID — not credentials.
-CHECKSUM = "5d41402abc4b2a76b9719d911017c592"
-USER_ID = "550e8400-e29b-41d4-a716-446655440000"
-
-def fingerprint(s):
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-"""
+    content = "import hashlib\n\n# Known test digest of \"hello\" and a UUID — not credentials.\nCHECKSUM = \"5d41402abc4b2a76b9719d911017c592\"\nUSER_ID = \"550e8400-e29b-41d4-a716-446655440000\"\n\ndef fingerprint(s):\n    return hashlib.sha256(s.encode(\"utf-8\")).hexdigest()\n"
     give corpus_file(path, content, [])
 }
 
 func kit_entropy_ts() = {
     path = "src/session.ts"
     content = "// Synthetic high-entropy blob, not a vendor key.\n" +
-        "export const session_blob = \"" + FAKE_ENTROPY + "\"\n"
+    "export const session_blob = \"" + FAKE_ENTROPY + "\"\n"
     give corpus_file(path, content, [
-        {rule_id: "high_entropy_string", needle: FAKE_ENTROPY}
+            {rule_id: "high_entropy_string", needle: FAKE_ENTROPY}
     ])
 }
 
 func kit_pem() = {
     path = "keys/id_rsa"
-    content = """-----BEGIN RSA PRIVATE KEY-----
-THIS-IS-NOT-A-PRIVATE-KEY-SAFESHARE-CORPUS-FAKE
------END RSA PRIVATE KEY-----
-"""
+    content = "-----BEGIN RSA PRIVATE KEY-----\nTHIS-IS-NOT-A-PRIVATE-KEY-SAFESHARE-CORPUS-FAKE\n-----END RSA PRIVATE KEY-----\n"
     give corpus_file(path, content, [
-        {rule_id: "pem_private_key", needle: "BEGIN RSA PRIVATE KEY"}
+            {rule_id: "pem_private_key", needle: "BEGIN RSA PRIVATE KEY"}
     ])
 }
 
 func kit_yaml() = {
     path = "config/app.yaml"
-    content = """# INTENTIONALLY risky local config for detector tests
-service: safeshare-corpus
-CORS: "*"
-verify_ssl: false
-"""
+    content = "# INTENTIONALLY risky local config for detector tests\nservice: safeshare-corpus\nCORS: \"*\"\nverify_ssl: false\n"
     give corpus_file(path, content, [
-        {rule_id: "cors_wildcard", needle: "CORS: \"*\""},
-        {rule_id: "tls_verification_disabled", needle: "verify_ssl: false"}
+            {rule_id: "cors_wildcard", needle: "CORS: \"*\""},
+            {rule_id: "tls_verification_disabled", needle: "verify_ssl: false"}
     ])
 }
 
 func kit_json() = {
     path = "config/settings.json"
-    content = """{
-  "name": "safeshare-corpus",
-  "DEBUG": true,
-  "authentication": false
-}
-"""
+    content = "{\n  \"name\": \"safeshare-corpus\",\n  \"DEBUG\": true,\n  \"authentication\": false\n}\n"
     give corpus_file(path, content, [
-        {rule_id: "debug_enabled", needle: "\"DEBUG\": true"},
-        {rule_id: "authentication_disabled", needle: "\"authentication\": false"}
+            {rule_id: "debug_enabled", needle: "\"DEBUG\": true"},
+            {rule_id: "authentication_disabled", needle: "\"authentication\": false"}
     ])
 }
 
 func kit_clean_yaml() = {
     path = "config/clean.yaml"
-    content = """name: safeshare
-env: test
-replicas: 1
-"""
+    content = "name: safeshare\nenv: test\nreplicas: 1\n"
     give corpus_file(path, content, [])
 }
 
 func kit_guide_md() = {
     path = "docs/guide.md"
-    content = """# Sharing this project
-
-This Markdown file has no credentials. It exists so throughput tests
-include documentation and AI-share-style paths.
-
-Do not put live keys in README files or chat pastes.
-"""
+    content = "# Sharing this project\n\nThis Markdown file has no credentials. It exists so throughput tests\ninclude documentation and AI-share-style paths.\n\nDo not put live keys in README files or chat pastes.\n"
     give corpus_file(path, content, [])
 }
 
 func kit_cursor_rules() = {
     path = ".cursor/rules.md"
-    content = """# Agent instructions (synthetic)
-
-You are helping with SafeShare. Never request production secrets.
-Prefer environment variables over literals.
-"""
+    content = "# Agent instructions (synthetic)\n\nYou are helping with SafeShare. Never request production secrets.\nPrefer environment variables over literals.\n"
     give corpus_file(path, content, [])
 }
 
 func kit_github_agents() = {
     path = ".github/copilot-instructions.md"
-    content = """# Copilot instructions
-
-Do not invent API keys. Point developers at a secret manager.
-"""
+    content = "# Copilot instructions\n\nDo not invent API keys. Point developers at a secret manager.\n"
     give corpus_file(path, content, [])
 }
 
 func kit_agents_md() = {
     path = "AGENTS.md"
-    content = """# Agents
-
-Synthetic instruction file for AI-share path coverage.
-"""
+    content = "# Agents\n\nSynthetic instruction file for AI-share path coverage.\n"
     give corpus_file(path, content, [])
 }
 
 func kit_vscode() = {
     path = ".vscode/settings.json"
-    content = """{
-  "editor.tabSize": 2,
-  "files.eol": "\\n"
-}
-"""
+    content = "{\n  \"editor.tabSize\": 2,\n  \"files.eol\": \"\\\\n\"\n}\n"
     give corpus_file(path, content, [])
 }
 

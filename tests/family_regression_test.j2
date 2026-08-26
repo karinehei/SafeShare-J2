@@ -44,13 +44,13 @@ func report_json_of(path, content) = {
     snap = FileSnapshot(path: path, content: content)
     hits = analyze_snapshot(snap)
     give scan_report_json({
-        files_discovered: 1,
-        files_scanned: 1,
-        files_skipped: 0,
-        bytes_scanned: len(content),
-        findings_count: count(hits),
-        findings: hits,
-        paths: [path]
+            files_discovered: 1,
+            files_scanned: 1,
+            files_skipped: 0,
+            bytes_scanned: len(content),
+            findings_count: count(hits),
+            findings: hits,
+            paths: [path]
     })
 }
 

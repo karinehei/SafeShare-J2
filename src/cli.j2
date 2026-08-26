@@ -2,30 +2,7 @@ import "util.j2"
 
 # argv → command record. proc.argv()[0] is the program name.
 
-func usage_text() = """SafeShare J2 — local-first secret scanner
-
-usage:
-  j2 run --allow-fs src/main.j2 PATH
-  j2 run --allow-fs src/main.j2 scan PATH
-  j2 run --allow-fs src/main.j2 scan PATH --json FILE
-  j2 run --allow-fs src/main.j2 scan PATH --ai-share
-  j2 run --allow-fs src/main.j2 scan PATH --max-bytes N
-  j2 run --allow-fs src/main.j2 scan PATH --exclude PATTERN
-  j2 run --allow-fs src/main.j2 sanitize PATH --output DEST
-  j2 run --allow-fs src/main.j2 benchmark CORPUS
-  j2 run --allow-fs src/main.j2 benchmark CORPUS --json FILE
-  j2 run --allow-fs src/main.j2 benchmark CORPUS --trials N --warmup N
-  j2 run --allow-fs src/main.j2 generate-corpus DEST
-  j2 run --allow-fs src/main.j2 generate-corpus DEST --repeat N
-  j2 run --allow-fs src/main.j2 evaluate CORPUS
-  j2 run --allow-fs src/main.j2 evaluate CORPUS --json FILE
-
-DEST must be a sibling or absolute folder outside PATH (not `.`, `..`, or inside PATH).
-Evaluate compares a scan to SAFESHARE_GROUND_TRUTH.json. Metrics omit wall-clock so they stay deterministic.
-Benchmark discards warmup runs and reports the median of timed trials.
-The j2 runtime denies filesystem access until you pass --allow-fs.
-Do not pass --allow-net; SafeShare is local-only.
-"""
+func usage_text() = "SafeShare J2 — local-first secret scanner\n\nusage:\n  j2 run --allow-fs src/main.j2 PATH\n  j2 run --allow-fs src/main.j2 scan PATH\n  j2 run --allow-fs src/main.j2 scan PATH --json FILE\n  j2 run --allow-fs src/main.j2 scan PATH --ai-share\n  j2 run --allow-fs src/main.j2 scan PATH --max-bytes N\n  j2 run --allow-fs src/main.j2 scan PATH --exclude PATTERN\n  j2 run --allow-fs src/main.j2 sanitize PATH --output DEST\n  j2 run --allow-fs src/main.j2 benchmark CORPUS\n  j2 run --allow-fs src/main.j2 benchmark CORPUS --json FILE\n  j2 run --allow-fs src/main.j2 benchmark CORPUS --trials N --warmup N\n  j2 run --allow-fs src/main.j2 generate-corpus DEST\n  j2 run --allow-fs src/main.j2 generate-corpus DEST --repeat N\n  j2 run --allow-fs src/main.j2 evaluate CORPUS\n  j2 run --allow-fs src/main.j2 evaluate CORPUS --json FILE\n\nDEST must be a sibling or absolute folder outside PATH (not `.`, `..`, or inside PATH).\nEvaluate compares a scan to SAFESHARE_GROUND_TRUTH.json. Metrics omit wall-clock so they stay deterministic.\nBenchmark discards warmup runs and reports the median of timed trials.\nThe j2 runtime denies filesystem access until you pass --allow-fs.\nDo not pass --allow-net; SafeShare is local-only.\n"
 
 func is_capability_flag(s) = {
     if s == "--allow-fs" or s == "--allow-proc" or s == "--allow-net" {

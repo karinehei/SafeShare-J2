@@ -144,7 +144,7 @@ func spans_on_file(path, content) = func(rule) = spans_for_rule(rule, path, cont
 
 # Independent per high-confidence rule, then a serial overlap fold.
 func collect_redact_spans(path, content) =
-    non_overlapping_spans(flatten(builtin_rules() >> spans_on_file(path, content)))
+non_overlapping_spans(flatten(builtin_rules() >> spans_on_file(path, content)))
 
 # Sequential splices from the right; each string depends on the previous.
 func apply_redact_spans(content, spans) = {
@@ -376,9 +376,9 @@ func write_sanitize_jobs(src, dest, planned) = {
             if job.modified {
                 replacements += job.replacements
                 modified = modified + [{
-                    file: job.file,
-                    replacements: job.replacements,
-                    rule_ids: job.rule_ids
+                        file: job.file,
+                        replacements: job.replacements,
+                        rule_ids: job.rule_ids
                 }]
             }
         } else RuntimeError {

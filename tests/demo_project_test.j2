@@ -3,66 +3,17 @@ import "../src/rules.j2"
 # Locks the two-minute demo-project/ scan story.
 # Same strings as the fixture files; keep them in sync.
 
-env = """# SafeShare demo — INTENTIONALLY FAKE and unusable.
-# The access key id is the published AWS documentation example.
-# It cannot sign requests and must not be used outside this fixture.
-AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-S3_BUCKET=safeshare-demo-example
-DATABASE_URL=postgres://127.0.0.1:5432/safeshare_demo
-"""
+env = "# SafeShare demo — INTENTIONALLY FAKE and unusable.\n# The access key id is the published AWS documentation example.\n# It cannot sign requests and must not be used outside this fixture.\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nS3_BUCKET=safeshare-demo-example\nDATABASE_URL=postgres://127.0.0.1:5432/safeshare_demo\n"
 
-config = """// SafeShare demo — INTENTIONALLY FAKE local config.
-// CORS=* and disabled TLS checks are here so a scan has something
-// besides credentials to talk about. Do not copy this into production.
+config = "// SafeShare demo — INTENTIONALLY FAKE local config.\n// CORS=* and disabled TLS checks are here so a scan has something\n// besides credentials to talk about. Do not copy this into production.\n\nexport const config = {\n  CORS: \"*\",\n  rejectUnauthorized: false,\n}\n"
 
-export const config = {
-  CORS: "*",
-  rejectUnauthorized: false,
-}
-"""
+app = "import { config } from \"./config.ts\"\n\n// SafeShare demo — INTENTIONALLY FAKE session.\n// Unsigned alg=none JWT. It authenticates nowhere. Do not send it\n// to a real API or paste it into an assistant chat as a live token.\nconst demoSession = \"eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx\"\n\nexport function handler() {\n  return {\n    cors: config.CORS,\n    session: demoSession,\n    note: \"synthetic demo user — not a real account\",\n  }\n}\n"
 
-app = """import { config } from "./config.ts"
+compose = "# SafeShare demo — local-only compose.\n# DEBUG is on so the scan can show a LOW config finding.\n# No credentials live in this file.\n\nservices:\n  web:\n    image: node:20-alpine\n    working_dir: /app\n    environment:\n      DEBUG: \"true\"\n      PORT: \"3000\"\n      DATABASE_URL: \"postgres://127.0.0.1:5432/safeshare_demo\"\n"
 
-// SafeShare demo — INTENTIONALLY FAKE session.
-// Unsigned alg=none JWT. It authenticates nowhere. Do not send it
-// to a real API or paste it into an assistant chat as a live token.
-const demoSession = "eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx"
+agents = "# Agent notes (SafeShare demo)\n\nThis tree is a **two-minute SafeShare fixture**, not a product.\n\n- Every credential-shaped string is **synthetic and unusable**.\n- Do not paste `.env` or `src/app.ts` into ChatGPT, Claude, Gemini, Cursor, or Copilot as if they were a real app.\n"
 
-export function handler() {
-  return {
-    cors: config.CORS,
-    session: demoSession,
-    note: "synthetic demo user — not a real account",
-  }
-}
-"""
-
-compose = """# SafeShare demo — local-only compose.
-# DEBUG is on so the scan can show a LOW config finding.
-# No credentials live in this file.
-
-services:
-  web:
-    image: node:20-alpine
-    working_dir: /app
-    environment:
-      DEBUG: "true"
-      PORT: "3000"
-      DATABASE_URL: "postgres://127.0.0.1:5432/safeshare_demo"
-"""
-
-agents = """# Agent notes (SafeShare demo)
-
-This tree is a **two-minute SafeShare fixture**, not a product.
-
-- Every credential-shaped string is **synthetic and unusable**.
-- Do not paste `.env` or `src/app.ts` into ChatGPT, Claude, Gemini, Cursor, or Copilot as if they were a real app.
-"""
-
-readme = """# SafeShare demo project
-
-All credentials are synthetic and unusable. See the table in demo-project/README.md.
-"""
+readme = "# SafeShare demo project\n\nAll credentials are synthetic and unusable. See the table in demo-project/README.md.\n"
 
 env_hits = analyze_content(".env", env)
 assert_eq(count(env_hits), 1)

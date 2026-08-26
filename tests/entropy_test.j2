@@ -52,11 +52,7 @@ assert_eq(full[0].rule_id, "high_entropy_string")
 assert_eq(count(run_one("generic_secret_assignment", "src/config.ts", src)), 0)
 
 # Hashes and prose in a file produce no entropy findings.
-quiet = """
-checksum = "5d41402abc4b2a76b9719d911017c592"
-note = "The quick brown fox jumps over the lazy dog and then some"
-label = SupercalifragilisticexpialidociousWonderfulWorld
-"""
+quiet = "\nchecksum = \"5d41402abc4b2a76b9719d911017c592\"\nnote = \"The quick brown fox jumps over the lazy dog and then some\"\nlabel = SupercalifragilisticexpialidociousWonderfulWorld\n"
 assert_eq(count(detect_high_entropy("notes.md", quiet)), 0)
 
 # Quoted duplicate of an assignment is one finding, not two.

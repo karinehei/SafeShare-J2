@@ -49,13 +49,14 @@ jobs:
           find . -name '*.j2' ! -path './.git/*' | LC_ALL=C sort > "${RUNNER_TEMP}/j2-files.txt"
           while IFS= read -r f; do
             [ -n "$f" ] || continue
-            tmp="${RUNNER_TEMP}/fmt-out.j2"
+            tmp=$(mktemp "${RUNNER_TEMP}/fmt.XXXXXX")
             j2 fmt "$f" > "$tmp"
             if ! cmp -s "$f" "$tmp"; then
               echo "unformatted: $f"
               diff -u "$f" "$tmp" || true
               failed=1
             fi
+            rm -f "$tmp"
           done < "${RUNNER_TEMP}/j2-files.txt"
           if [ "$failed" -ne 0 ]; then
             echo "Committed .j2 files do not match j2 fmt. Run: j2 fmt -w FILE.j2"

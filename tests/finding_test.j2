@@ -5,16 +5,16 @@ raw = "AKIAIOSFODNN7EXAMPLE"
 loc = line_column_at("id=\nkey=" + raw, 8)
 
 f = make_finding({
-    rule_id: "aws_access_key",
-    severity: Severity::critical(),
-    file: "src/app.env",
-    line: loc.line,
-    column: loc.column,
-    category: "secret",
-    message: "AWS access key id in source",
-    reason: "Value matches the AKIA prefix used by AWS access keys",
-    recommendation: "Rotate the key and load it from the environment, not the repo"
-}, raw)
+        rule_id: "aws_access_key",
+        severity: Severity::critical(),
+        file: "src/app.env",
+        line: loc.line,
+        column: loc.column,
+        category: "secret",
+        message: "AWS access key id in source",
+        reason: "Value matches the AKIA prefix used by AWS access keys",
+        recommendation: "Rotate the key and load it from the environment, not the repo"
+    }, raw)
 
 # The report object must not contain the complete secret.
 assert_eq(contains(f.masked_value, raw), false)
@@ -26,46 +26,46 @@ assert_eq(f.line, 2)
 
 # Same secret + rule → same fingerprint, even in another file.
 g = make_finding({
-    rule_id: "aws_access_key",
-    severity: Severity::critical(),
-    file: "backup.env",
-    line: 1,
-    column: 1,
-    category: "secret",
-    message: "AWS access key id in source",
-    reason: "Value matches the AKIA prefix used by AWS access keys",
-    recommendation: "Rotate the key"
-}, raw)
+        rule_id: "aws_access_key",
+        severity: Severity::critical(),
+        file: "backup.env",
+        line: 1,
+        column: 1,
+        category: "secret",
+        message: "AWS access key id in source",
+        reason: "Value matches the AKIA prefix used by AWS access keys",
+        recommendation: "Rotate the key"
+    }, raw)
 assert_eq(f.fingerprint, g.fingerprint)
 assert_eq(len(f.fingerprint), 64)
 
 # Short secrets are fully masked so the mask cannot reconstruct them.
 short = make_finding({
-    rule_id: "generic_password",
-    severity: Severity::high(),
-    file: "local.env",
-    line: 3,
-    column: 0,
-    category: "credential",
-    message: "Hard-coded password",
-    reason: "Assignment to a password-like name",
-    recommendation: "Remove it and use a secret manager"
-}, "s3cret!")
+        rule_id: "generic_password",
+        severity: Severity::high(),
+        file: "local.env",
+        line: 3,
+        column: 0,
+        category: "credential",
+        message: "Hard-coded password",
+        reason: "Assignment to a password-like name",
+        recommendation: "Remove it and use a secret manager"
+    }, "s3cret!")
 assert_eq(short.masked_value, "s******")
 assert_eq(contains(short.to_text(), "s3cret!"), false)
 
 # Path-sensitive hits may have no token to mask.
 path_hit = make_finding({
-    rule_id: "private_key_file",
-    severity: Severity::critical(),
-    file: "id_rsa",
-    line: 1,
-    column: 0,
-    category: "path_sensitive",
-    message: "Private key file",
-    reason: "Basename is a well-known secret path",
-    recommendation: "Do not share this file"
-}, "")
+        rule_id: "private_key_file",
+        severity: Severity::critical(),
+        file: "id_rsa",
+        line: 1,
+        column: 0,
+        category: "path_sensitive",
+        message: "Private key file",
+        reason: "Basename is a well-known secret path",
+        recommendation: "Do not share this file"
+    }, "")
 assert_eq(path_hit.masked_value, "")
 assert_eq(path_hit.fingerprint, finding_fingerprint("private_key_file", ""))
 

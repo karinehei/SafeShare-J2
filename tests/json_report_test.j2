@@ -3,28 +3,28 @@ import "../src/cli.j2"
 
 raw = "sk-1234567890abcdefghijkl"
 hit = make_finding({
-    rule_id: "openai_style_api_key",
-    severity: Severity::critical(),
-    file: ".env",
-    line: 3,
-    column: 1,
-    category: "secret",
-    message: "OpenAI API key detected",
-    reason: "heuristic",
-    recommendation: "Rotate the key"
-}, raw)
+        rule_id: "openai_style_api_key",
+        severity: Severity::critical(),
+        file: ".env",
+        line: 3,
+        column: 1,
+        category: "secret",
+        message: "OpenAI API key detected",
+        reason: "heuristic",
+        recommendation: "Rotate the key"
+    }, raw)
 
 later = make_finding({
-    rule_id: "generic_password",
-    severity: Severity::high(),
-    file: "src/app.ts",
-    line: 8,
-    column: 1,
-    category: "credential",
-    message: "Hard-coded password",
-    reason: "assignment",
-    recommendation: "remove"
-}, "hunter2_secret")
+        rule_id: "generic_password",
+        severity: Severity::high(),
+        file: "src/app.ts",
+        line: 8,
+        column: 1,
+        category: "credential",
+        message: "Hard-coded password",
+        reason: "assignment",
+        recommendation: "remove"
+    }, "hunter2_secret")
 
 result = {
     files_discovered: 428,
@@ -72,13 +72,13 @@ again = scan_report_json(result)
 assert_eq(again, text)
 
 clean = scan_report_document({
-    files_discovered: 10,
-    files_scanned: 10,
-    files_skipped: 0,
-    bytes_scanned: 0,
-    findings_count: 0,
-    findings: [],
-    paths: []
+        files_discovered: 10,
+        files_scanned: 10,
+        files_skipped: 0,
+        bytes_scanned: 0,
+        findings_count: 0,
+        findings: [],
+        paths: []
 })
 assert_eq(count(clean.findings), 0)
 assert_eq(clean.summary.findings, 0)

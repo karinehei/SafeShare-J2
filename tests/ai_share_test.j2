@@ -20,38 +20,38 @@ assert_eq(is_ai_share_path("src/app.ts"), false)
 assert_eq(is_ai_share_path("src/main.j2"), false)
 
 secret = make_finding({
-    rule_id: "aws_access_key_id",
-    severity: Severity::critical(),
-    file: ".env",
-    line: 2,
-    column: 1,
-    category: "secret",
-    message: "AWS access key id",
-    reason: "test",
-    recommendation: "rotate"
-}, "AKIAIOSFODNN7EXAMPLE")
+        rule_id: "aws_access_key_id",
+        severity: Severity::critical(),
+        file: ".env",
+        line: 2,
+        column: 1,
+        category: "secret",
+        message: "AWS access key id",
+        reason: "test",
+        recommendation: "rotate"
+    }, "AKIAIOSFODNN7EXAMPLE")
 
 warn = make_config_finding({
-    rule_id: "debug_enabled",
-    severity: Severity::low(),
-    file: "app.env",
-    line: 1,
-    column: 1,
-    reason: "DEBUG appears enabled",
-    recommendation: "keep debug off when sharing"
-}, "DEBUG=true")
+        rule_id: "debug_enabled",
+        severity: Severity::low(),
+        file: "app.env",
+        line: 1,
+        column: 1,
+        reason: "DEBUG appears enabled",
+        recommendation: "keep debug off when sharing"
+    }, "DEBUG=true")
 
 other = make_finding({
-    rule_id: "generic_password",
-    severity: Severity::high(),
-    file: "src/app.ts",
-    line: 10,
-    column: 1,
-    category: "credential",
-    message: "Hard-coded password",
-    reason: "test",
-    recommendation: "remove"
-}, "hunter2_secret")
+        rule_id: "generic_password",
+        severity: Severity::high(),
+        file: "src/app.ts",
+        line: 10,
+        column: 1,
+        category: "credential",
+        message: "Hard-coded password",
+        reason: "test",
+        recommendation: "remove"
+    }, "hunter2_secret")
 
 assert_eq(is_blocking_finding(secret), true)
 assert_eq(is_blocking_finding(other), true)

@@ -64,10 +64,10 @@ assert_eq(clean.content, "# hello\n")
 
 # Pure plan stage: redact without touching the filesystem.
 planned_aws = plan_sanitize_job({
-    kind: "text",
-    file: "app.env",
-    outp: "./project-safe/app.env",
-    content: src
+        kind: "text",
+        file: "app.env",
+        outp: "./project-safe/app.env",
+        content: src
 })
 assert_eq(planned_aws.kind, "text")
 assert_eq(contains(planned_aws.content, aws), false)
@@ -80,8 +80,8 @@ assert_eq(skipped_plan.kind, "skip")
 assert_eq(skipped_plan.reason, "binary")
 
 batch = plan_sanitize_jobs([
-    {kind: "text", file: "a.env", outp: "out/a.env", content: src},
-    {kind: "skip", file: "x.bin", reason: "binary"}
+        {kind: "text", file: "a.env", outp: "out/a.env", content: src},
+        {kind: "skip", file: "x.bin", reason: "binary"}
 ])
 assert_eq(count(batch), 2)
 assert_eq(contains(batch[0].content, aws), false)
@@ -89,8 +89,8 @@ assert_eq(batch[1].kind, "skip")
 
 # Report JSON never contains the live secret.
 doc = sanitization_report_document("./project", "./project-safe", 3, [
-    {file: "app.env", replacements: 1, rule_ids: ["aws_access_key_id"]}
-], [], 1)
+        {file: "app.env", replacements: 1, rule_ids: ["aws_access_key_id"]}
+    ], [], 1)
 js = json.stringify_pretty(doc)
 assert_eq(contains(js, aws), false)
 assert_eq(doc.summary.files_modified, 1)
@@ -103,8 +103,8 @@ assert_eq(contains(text, "app.env"), true)
 assert_eq(contains(text, aws), false)
 
 unsafe_doc = sanitization_report_document("./project", "./project-safe", 0, [], [
-    {file: "(unsafe path)", reason: "unsafe_path"}
-], 0)
+        {file: "(unsafe path)", reason: "unsafe_path"}
+    ], 0)
 ujs = json.stringify(unsafe_doc)
 assert_eq(contains(ujs, "../"), false)
 assert_eq(contains(ujs, "unsafe_path"), true)
@@ -156,8 +156,8 @@ assert_eq(contains(overlap_out.rule_ids, "database_url_credentials"), true)
 
 # Synthetic overlap fold: first-by-start keeps one span; apply does not scramble.
 kept = non_overlapping_spans([
-    {start: 5, end: 15, replacement: "B", rule_id: "github_token"},
-    {start: 0, end: 10, replacement: "A", rule_id: "aws_access_key_id"}
+        {start: 5, end: 15, replacement: "B", rule_id: "github_token"},
+        {start: 0, end: 10, replacement: "A", rule_id: "aws_access_key_id"}
 ])
 assert_eq(count(kept), 1)
 assert_eq(kept[0].start, 0)
@@ -165,8 +165,8 @@ assert_eq(kept[0].rule_id, "aws_access_key_id")
 assert_eq(apply_redact_spans("0123456789XXXXX", kept), "AXXXXX")
 
 touching = non_overlapping_spans([
-    {start: 0, end: 3, replacement: "A", rule_id: "aws_access_key_id"},
-    {start: 3, end: 6, replacement: "B", rule_id: "github_token"}
+        {start: 0, end: 3, replacement: "A", rule_id: "aws_access_key_id"},
+        {start: 3, end: 6, replacement: "B", rule_id: "github_token"}
 ])
 assert_eq(count(touching), 2)
 assert_eq(apply_redact_spans("abcdef", touching), "AB")

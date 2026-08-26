@@ -1,16 +1,16 @@
 import "../src/risk.j2"
 
 func fake_finding(sev, category) = make_finding({
-    rule_id: "test_rule",
-    severity: sev,
-    file: "a.env",
-    line: 1,
-    column: 1,
-    category: category,
-    message: "test",
-    reason: "test",
-    recommendation: "test"
-}, "dummy-value-xx")
+        rule_id: "test_rule",
+        severity: sev,
+        file: "a.env",
+        line: 1,
+        column: 1,
+        category: category,
+        message: "test",
+        reason: "test",
+        recommendation: "test"
+    }, "dummy-value-xx")
 
 empty = score_findings([])
 assert_eq(empty.score, 0)
