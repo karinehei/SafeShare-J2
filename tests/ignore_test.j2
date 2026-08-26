@@ -57,4 +57,20 @@ rooted = parse_ignore_rules("/only-root/\n")
 assert_eq(path_ignored(rooted, "only-root", "only-root", true), true)
 assert_eq(path_ignored(rooted, "src/only-root", "only-root", true), false)
 
+# CI self-scan ignore shapes (same strings as .safeshareignore).
+ci_ignore = parse_ignore_rules("""
+demo-project/
+tests/
+tests/fixtures/
+benchmark/generated/
+src/corpus.j2
+""")
+assert_eq(path_ignored(ci_ignore, "demo-project", "demo-project", true), true)
+assert_eq(path_ignored(ci_ignore, "demo-project/.env", ".env", false), true)
+assert_eq(path_ignored(ci_ignore, "tests/detectors_test.j2", "detectors_test.j2", false), true)
+assert_eq(path_ignored(ci_ignore, "tests/fixtures/sample.txt", "sample.txt", false), true)
+assert_eq(path_ignored(ci_ignore, "src/corpus.j2", "corpus.j2", false), true)
+assert_eq(path_ignored(ci_ignore, "src/rules.j2", "rules.j2", false), false)
+assert_eq(path_ignored(ci_ignore, "src/main.j2", "main.j2", false), false)
+
 print("ignore_test ok")

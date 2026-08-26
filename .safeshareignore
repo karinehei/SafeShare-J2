@@ -1,0 +1,21 @@
+# Known synthetic fixtures. Used by `scan .` (including CI self-scan).
+# These patterns skip intentional dummy credentials; they do not weaken detectors.
+#
+# Ignore language: trailing / = directory, leading / = scan-root only,
+# one * per segment, bare name = that file or folder at any depth.
+# Not supported: **, !, character classes.
+
+# Two-minute live demo (published AWS example + unsigned JWT).
+demo-project/
+
+# Unit/regression programs embed the same published examples as literals.
+tests/
+tests/fixtures/
+
+# Generated corpus trees (local or CI). Ground-truth JSON is also built-in-skipped.
+benchmark/generated/
+benchmark-corpus/
+corpus-out/
+
+# Synthetic kit constants (FAKE_AWS, dummy PEM, etc.). Product code stays scanned.
+src/corpus.j2

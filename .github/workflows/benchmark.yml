@@ -1,0 +1,96 @@
+# Optional timing job. Not a required PR check.
+#
+# GitHub-hosted runner numbers are useful for coarse regression comparison.
+# They are not authoritative performance measurements: noisy shared VMs,
+# no controlled thermal/CPU isolation, and J2 0.1.0 is Apple Silicon only.
+
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeat:
+        description: Corpus copies (generate-corpus --repeat)
+        required: false
+        default: "10"
+      trials:
+        description: Timed trials per engine
+        required: false
+        default: "3"
+      warmup:
+        description: Untimed warmup runs
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Interpreter vs native analyze
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install J2 0.1.0
+        run: |
+          chmod +x scripts/ci/install-j2.sh
+          ./scripts/ci/install-j2.sh
+
+      - name: Verify j2 --version
+        run: j2 --version | grep -q "0.1.0"
+
+      - name: Generate synthetic corpus
+        env:
+          REPEAT: ${{ github.event.inputs.repeat }}
+        run: |
+          set -euo pipefail
+          corpus="${RUNNER_TEMP}/benchmark-corpus"
+          j2 run --allow-fs src/main.j2 generate-corpus "$corpus" --repeat "$REPEAT"
+          echo "CORPUS=$corpus" >> "$GITHUB_ENV"
+          echo "WARNING: GitHub-hosted results are not lab-grade timings."
+
+      - name: Interpreter benchmark
+        env:
+          TRIALS: ${{ github.event.inputs.trials }}
+          WARMUP: ${{ github.event.inputs.warmup }}
+        run: |
+          set -euo pipefail
+          j2 run --allow-fs src/main.j2 benchmark "$CORPUS" \
+            --trials "$TRIALS" --warmup "$WARMUP" \
+            --json "${RUNNER_TEMP}/benchmark-interpreter.json"
+
+      - name: Native build
+        run: j2 build src/main.j2 -o safeshare
+
+      - name: Native benchmark
+        env:
+          TRIALS: ${{ github.event.inputs.trials }}
+          WARMUP: ${{ github.event.inputs.warmup }}
+        run: |
+          set -euo pipefail
+          ./safeshare --allow-fs benchmark "$CORPUS" \
+            --trials "$TRIALS" --warmup "$WARMUP" \
+            --json "${RUNNER_TEMP}/benchmark-native.json"
+
+      - name: Note on interpreting results
+        run: |
+          cat <<'EOF'
+          Compare the Analyze (in-memory complete_scan) rows, not end-to-end.
+          Filesystem discovery is serial and can hide native compute changes.
+          Do not cite these GitHub-hosted numbers as product performance.
+          EOF
+
+      - name: Upload result artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: safeshare-benchmark-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/benchmark-interpreter.json
+            ${{ runner.temp }}/benchmark-native.json
+          if-no-files-found: error

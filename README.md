@@ -76,6 +76,18 @@ j2 test tests
 
 Tests are pure: they do not call `fs` and do not need `--allow-fs`. Do not point `j2 test` at `src/main.j2` — that file **is** the CLI and runs at load.
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-15** (Apple Silicon), matching J2 0.1.0. On every push and pull request it:
+
+1. Installs J2 from the official [v0.1.0 tarball](https://github.com/JasnamSinghArora/j2/releases/tag/v0.1.0) (`j2-0.1.0-aarch64-apple-darwin.tar.gz`) after checking the published SHA-256.
+2. Checks that committed `.j2` files match `j2 fmt` (stdout vs file; J2 0.1.0 has no `--check`).
+3. Runs `j2 test tests`.
+4. Compiles `j2 build src/main.j2 -o safeshare` and smokes `demo-project/` (JSON, five expected findings, no raw fixture secrets).
+5. Self-scans the repo with `./safeshare --allow-fs scan . --ai-share`. Known synthetic trees are listed in `.safeshareignore` (`demo-project/`, `tests/`, …), not by weakening detectors.
+
+Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a separate manual workflow (`.github/workflows/benchmark.yml`); they are not a required PR check. GitHub-hosted timings are noisy and should not be quoted as product performance.
+
 ## Usage
 
 `--allow-fs` is a flag on **`j2`**, not an argument to SafeShare. Put it before the program file. A bare path defaults to `scan`.

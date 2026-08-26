@@ -1,0 +1,106 @@
+# SafeShare CI — format, tests, native build, demo smoke, repo self-scan.
+# J2 0.1.0 is macOS Apple Silicon only. Benchmarks are not in this workflow.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Format, test, build, smoke, self-scan
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install J2 0.1.0
+        # Official release asset + SHA-256 from j2-lang.org/download.html
+        # and github.com/JasnamSinghArora/j2/releases/tag/v0.1.0
+        # (j2-0.1.0-aarch64-apple-darwin.tar.gz).
+        run: |
+          chmod +x scripts/ci/install-j2.sh
+          ./scripts/ci/install-j2.sh
+
+      - name: Verify j2 --version
+        run: |
+          j2 --version
+          j2 --version | grep -q "0.1.0"
+
+      - name: Format validation
+        # j2 0.1.0: `j2 fmt [-w] FILE.j2` — no --check flag
+        # (https://j2-lang.org/docs/cli.html). Without -w, fmt writes stdout.
+        # CI must not rewrite the tree; fail when stdout ≠ the committed file.
+        run: |
+          set -euo pipefail
+          failed=0
+          find . -name '*.j2' ! -path './.git/*' | LC_ALL=C sort > "${RUNNER_TEMP}/j2-files.txt"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            tmp="${RUNNER_TEMP}/fmt-out.j2"
+            j2 fmt "$f" > "$tmp"
+            if ! cmp -s "$f" "$tmp"; then
+              echo "unformatted: $f"
+              diff -u "$f" "$tmp" || true
+              failed=1
+            fi
+          done < "${RUNNER_TEMP}/j2-files.txt"
+          if [ "$failed" -ne 0 ]; then
+            echo "Committed .j2 files do not match j2 fmt. Run: j2 fmt -w FILE.j2"
+            exit 1
+          fi
+
+      - name: Unit and regression tests
+        # Documented test runner. Do not pass src/main.j2 — it is the CLI.
+        # Tests are pure (no --allow-fs). A failed assert fails this step.
+        run: j2 test tests
+
+      - name: Native build
+        run: |
+          set -euo pipefail
+          j2 build src/main.j2 -o safeshare
+          test -f ./safeshare
+          test -x ./safeshare
+          # Capability grant is a J2 runtime flag. Native binaries may still
+          # require it; SafeShare strips --allow-fs from scan argv (see README).
+          # Missing operands print usage and exit 2 — that still proves it runs.
+          set +e
+          ./safeshare --allow-fs --help > "${RUNNER_TEMP}/safeshare-help.txt" 2>&1
+          set -e
+          grep -q "SafeShare J2" "${RUNNER_TEMP}/safeshare-help.txt"
+
+      - name: Demo-project smoke test
+        # Synthetic fixture only. JSON is the deterministic artifact; no colors.
+        # --allow-fs is required; --allow-net is never passed.
+        run: |
+          set -euo pipefail
+          json1="${RUNNER_TEMP}/demo-report-1.json"
+          json2="${RUNNER_TEMP}/demo-report-2.json"
+          log="${RUNNER_TEMP}/demo-scan.txt"
+
+          ./safeshare --allow-fs scan ./demo-project --json "$json1" | tee "$log"
+          ./safeshare --allow-fs scan ./demo-project --json "$json2" > /dev/null
+
+          cmp -s "$json1" "$json2"
+          python3 scripts/ci/verify-demo-smoke.py "$json1" "$log"
+
+      - name: Self-scan repository
+        # Catch accidental real credentials in product sources.
+        # Intentional fixtures are listed in .safeshareignore — not by weakening rules.
+        run: |
+          set -euo pipefail
+          json="${RUNNER_TEMP}/self-scan.json"
+          ./safeshare --allow-fs scan . --ai-share --json "$json" | tee "${RUNNER_TEMP}/self-scan.txt"
+          python3 scripts/ci/verify-self-scan.py "$json"
