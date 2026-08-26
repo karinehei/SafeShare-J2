@@ -72,9 +72,10 @@ j2 --version
 
 ```sh
 j2 test tests
+make check
 ```
 
-Tests are pure: they do not call `fs` and do not need `--allow-fs`. Do not point `j2 test` at `src/main.j2` — that file **is** the CLI and runs at load.
+`make help` lists local targets (format, tests, native build, demo scan, corpus). Tests are pure: they do not call `fs` and do not need `--allow-fs`. Do not point `j2 test` at `src/main.j2` — that file **is** the CLI and runs at load.
 
 ## CI
 
