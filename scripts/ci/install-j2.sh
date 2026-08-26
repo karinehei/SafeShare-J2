@@ -46,15 +46,23 @@ tar xzf "$J2_ASSET"
 cd j2-0.1.0-aarch64-apple-darwin
 
 # Documented overrides: J2_PREFIX and J2_BINDIR (j2-lang.org/download.html).
+# 0.1.0 install.sh places the binary at $J2_PREFIX/bin/j2 and links
+# $J2_BINDIR/j (short name). Docs and this repo use `j2`.
 J2_PREFIX="$PREFIX" J2_BINDIR="$BINDIR" ./install.sh
 
-if [ ! -x "${BINDIR}/j2" ]; then
-    echo "install.sh did not place an executable j2 at ${BINDIR}/j2" >&2
+real="${PREFIX}/bin/j2"
+if [ ! -x "$real" ]; then
+    echo "install.sh did not install an executable at ${real}" >&2
     exit 1
+fi
+
+if [ ! -e "${BINDIR}/j2" ]; then
+    ln -sf "$real" "${BINDIR}/j2"
 fi
 
 if [ -n "${GITHUB_PATH:-}" ]; then
     echo "$BINDIR" >> "$GITHUB_PATH"
+    echo "${PREFIX}/bin" >> "$GITHUB_PATH"
 fi
 
 echo "J2 installed to ${PREFIX}; command at ${BINDIR}/j2"
