@@ -27,11 +27,11 @@ assert_eq(contains(mask_secret(openai), openai), false)
 # Database password: the complete value must not appear in the mask.
 db = "supersecretpassword123"
 masked_db = mask_secret(db)
-assert_eq(len(db), 23)
+assert_eq(len(db), 22)
 assert_eq(contains(masked_db, db), false)
 assert_eq(contains(masked_db, "supersecretpassword123"), false)
 assert_eq(len(masked_db), len(db))
-assert_eq(masked_db, "sup******************23")
+assert_eq(masked_db, "sup*****************23")
 
 # Deterministic: same input, same mask.
 assert_eq(mask_secret(openai), mask_secret(openai))

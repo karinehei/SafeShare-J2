@@ -1,4 +1,4 @@
-import "sanitize.j2"
+import "rules.j2"
 import "report.j2"
 
 # Family-split regression: exact finding sets after the sibling-call refactor.
@@ -22,7 +22,15 @@ func finding_named(hits, rule_id) = {
     assert false, fmt("expected finding {}", rule_id)
 }
 
-func count_named(hits, rule_id) = count(hits ? (func(h) = h.rule_id == rule_id))
+func count_named(hits, rule_id) = {
+    n := 0
+    for h in hits {
+        if h.rule_id == rule_id {
+            n += 1
+        }
+    }
+    give n
+}
 
 func fingerprint_key(hits) = {
     parts := []

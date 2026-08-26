@@ -26,6 +26,8 @@ assert_eq(entropy_suspicious("550e8400-e29b-41d4-a716-446655440000"), false)
 assert_eq(entropy_suspicious("AKIAIOSFODNN7EXAMPLEKEY12"), false)
 assert_eq(entropy_suspicious("ghp_0123456789abcdef0123456789abcdef1234"), false)
 assert_eq(entropy_suspicious("sk-abcdefghijklmnopqrstuvwxyzABCDEF"), false)
+assert_eq(entropy_suspicious("eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx"), false)
+assert_eq(entropy_suspicious("AIza" + times_text("x", 35)), false)
 
 # Assignment form matches the example finding.
 src = times_text("\n", 37) + "service_token = \"" + TOKEN + "\"\n"

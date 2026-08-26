@@ -2,18 +2,20 @@
 
 DEFAULT_MAX_TEXT_BYTES = 1_000_000
 
-# Repeat s, n times. Drive the loop by output length, not a counter:
-# `repeat i < n` was one copy short on J2 0.1.0.
+# Repeat s, n times. `repeat true` cannot native-compile on 0.1.0.
+# If the counted loop is one copy short, top up from the target length.
 func times_text(s, n) = {
     if n <= 0 {
         give ""
     }
     out := ""
+    i := 0
     target = n * len(s)
-    repeat true {
-        if len(out) >= target {
-            give out
-        }
+    repeat i < n {
+        out = out + s
+        i += 1
+    }
+    if len(out) < target {
         out = out + s
     }
     give out

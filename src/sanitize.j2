@@ -128,8 +128,6 @@ func span_or_empty(rule, content, m) = {
     give []
 }
 
-func spans_from_match(rule, content) = func(m) = span_or_empty(rule, content, m)
-
 func spans_for_rule(rule, path, content) = {
     if not rule_redacts(rule) {
         give []
@@ -137,14 +135,26 @@ func spans_for_rule(rule, path, content) = {
     if not rule_applies(rule, path) {
         give []
     }
-    give flatten(regex.find_all(rule.pattern, content) >> spans_from_match(rule, content))
+    matches = regex.find_all(rule.pattern, content)
+    out := []
+    i := 0
+    repeat i < count(matches) {
+        out = out + span_or_empty(rule, content, matches[i])
+        i += 1
+    }
+    give out
 }
-
-func spans_on_file(path, content) = func(rule) = spans_for_rule(rule, path, content)
 
 # Independent per high-confidence rule, then a serial overlap fold.
 func collect_redact_spans(path, content) = {
-    give non_overlapping_spans(flatten(builtin_rules() >> spans_on_file(path, content)))
+    rules = builtin_rules()
+    out := []
+    i := 0
+    repeat i < count(rules) {
+        out = out + spans_for_rule(rules[i], path, content)
+        i += 1
+    }
+    give non_overlapping_spans(out)
 }
 
 # Sequential splices from the right; each string depends on the previous.
@@ -355,7 +365,15 @@ func plan_sanitize_job(job) = {
     }
 }
 
-func plan_sanitize_jobs(jobs) = jobs >> plan_sanitize_job
+func plan_sanitize_jobs(jobs) = {
+    out := []
+    i := 0
+    repeat i < count(jobs) {
+        out = out + [plan_sanitize_job(jobs[i])]
+        i += 1
+    }
+    give out
+}
 
 # Serial I/O writes. Stats are a fold over write outcomes, including failures.
 func write_sanitize_jobs(src, dest, planned) = {
@@ -366,24 +384,31 @@ func write_sanitize_jobs(src, dest, planned) = {
     for job in planned {
         if job.kind == "skip" {
             skipped = skipped + [{file: job.file, reason: job.reason}]
-            skip
-        }
-        try {
-            if not write_if_contained(src, dest, job.outp, job.content) {
-                skipped = skipped + [{file: job.file, reason: "unsafe_path"}]
-                skip
+        } else {
+            wrote := false
+            failed := false
+            try {
+                wrote = write_if_contained(src, dest, job.outp, job.content)
+            } else RuntimeError {
+                failed = true
             }
-            copied += 1
-            if job.modified {
-                replacements += job.replacements
-                modified = modified + [{
-                        file: job.file,
-                        replacements: job.replacements,
-                        rule_ids: job.rule_ids
-                }]
+            if failed {
+                skipped = skipped + [{file: job.file, reason: "unreadable"}]
+            } else {
+                if not wrote {
+                    skipped = skipped + [{file: job.file, reason: "unsafe_path"}]
+                } else {
+                    copied += 1
+                    if job.modified {
+                        replacements += job.replacements
+                        modified = modified + [{
+                                file: job.file,
+                                replacements: job.replacements,
+                                rule_ids: job.rule_ids
+                        }]
+                    }
+                }
             }
-        } else RuntimeError {
-            skipped = skipped + [{file: job.file, reason: "unreadable"}]
         }
     }
     give {

@@ -23,10 +23,7 @@ func count_char(chars, needle) = {
     n := 0
     i := 0
     limit = count(chars)
-    repeat true {
-        if i >= limit {
-            give n
-        }
+    repeat i < limit {
         if chars[i] == needle {
             n += 1
         }
@@ -51,10 +48,7 @@ func shannon_entropy(s) = {
     total := 0.0
     i := 0
     limit = count(uniq)
-    repeat true {
-        if i >= limit {
-            give total
-        }
+    repeat i < limit {
         total = total + shannon_contribution(chars, n, uniq[i])
         i += 1
     }
@@ -160,45 +154,59 @@ func is_base64_charset(s) = {
     give true
 }
 
+func unquote_token(s) = {
+    n = len(s)
+    if n >= 2 {
+        a = s[0]
+        b = s[n - 1]
+        if a == b and (a == "\"" or a == "'") {
+            give slice(s, 1, n - 1)
+        }
+    }
+    give s
+}
+
 func looks_like_known_format(s) = {
-    if text.starts_with(s, "AKIA") { give true }
-    if text.starts_with(s, "ghp_") or text.starts_with(s, "gho_") or text.starts_with(s, "ghu_") { give true }
-    if text.starts_with(s, "ghs_") or text.starts_with(s, "ghr_") or text.starts_with(s, "github_pat_") { give true }
-    if text.starts_with(s, "AIza") or text.starts_with(s, "sk-") or text.starts_with(s, "eyJ") { give true }
-    if text.starts_with(s, "-----BEGIN") { give true }
+    t = unquote_token(s)
+    if text.starts_with(t, "AKIA") { give true }
+    if text.starts_with(t, "ghp_") or text.starts_with(t, "gho_") or text.starts_with(t, "ghu_") { give true }
+    if text.starts_with(t, "ghs_") or text.starts_with(t, "ghr_") or text.starts_with(t, "github_pat_") { give true }
+    if text.starts_with(t, "AIza") or text.starts_with(t, "sk-") or text.starts_with(t, "eyJ") { give true }
+    if text.starts_with(t, "-----BEGIN") { give true }
     give false
 }
 
 # True when the token looks more like a secret than like prose or a digest.
 # This is a heuristic: high entropy is not proof of a credential.
 func entropy_suspicious(s) = {
-    n = len(s)
+    t = unquote_token(s)
+    n = len(t)
     if n < ENTROPY_MIN_LEN {
         give false
     }
-    if contains(s, " ") or contains(s, "\t") or contains(s, "/") or contains(s, "\\") {
+    if contains(t, " ") or contains(t, "\t") or contains(t, "/") or contains(t, "\\") {
         give false
     }
-    if contains(s, "://") {
+    if contains(t, "://") {
         give false
     }
-    if text.starts_with(s, "${") or text.starts_with(s, "{{") or text.starts_with(s, "<") {
+    if text.starts_with(t, "${") or text.starts_with(t, "{{") or text.starts_with(t, "<") {
         give false
     }
-    if looks_like_known_format(s) or is_common_hash(s) or is_uuid_string(s) {
+    if looks_like_known_format(t) or is_common_hash(t) or is_uuid_string(t) {
         give false
     }
-    flags = charset_flags(s)
+    flags = charset_flags(t)
     if flags.digit == 0 and flags.other == 0 {
         give false
     }
     if flags.lower + flags.upper + flags.digit + flags.other < 2 {
         give false
     }
-    if unique_ratio(s) < ENTROPY_MIN_UNIQUE {
+    if unique_ratio(t) < ENTROPY_MIN_UNIQUE {
         give false
     }
-    give shannon_entropy(s) >= ENTROPY_MIN_BITS
+    give shannon_entropy(t) >= ENTROPY_MIN_BITS
 }
 
 func entropy_reason(name, raw, bits) = {
