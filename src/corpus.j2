@@ -350,20 +350,20 @@ func hit_cmp(a, b) = {
 
 func sort_hits(hits) = sort_by(hits, hit_cmp)
 
-func prf(tp, fp, fn) = {
+func prf(tp, fp, n_fn) = {
     prec := 0.0
     rec := 0.0
     if tp + fp == 0 {
-        if fn == 0 {
+        if n_fn == 0 {
             prec = 1.0
         }
     } else {
         prec = tp / (tp + fp)
     }
-    if tp + fn == 0 {
+    if tp + n_fn == 0 {
         rec = 1.0
     } else {
-        rec = tp / (tp + fn)
+        rec = tp / (tp + n_fn)
     }
     f1 := 0.0
     if prec + rec > 0.0 {
@@ -394,17 +394,17 @@ func detector_ids() = {
 func per_rule_row(rule_id, expected, findings, fn_list, fp_list) = {
     exp = count_rule_id(expected, rule_id)
     det = count_rule_id(findings, rule_id)
-    fn = count_rule_id(fn_list, rule_id)
+    n_fn = count_rule_id(fn_list, rule_id)
     fp = count_rule_id(fp_list, rule_id)
-    tp = exp - fn
-    m = prf(tp, fp, fn)
+    tp = exp - n_fn
+    m = prf(tp, fp, n_fn)
     give {
         rule_id: rule_id,
         expected: exp,
         detected: det,
         true_positives: tp,
         false_positives: fp,
-        false_negatives: fn,
+        false_negatives: n_fn,
         precision: m.precision,
         recall: m.recall,
         f1: m.f1
@@ -446,13 +446,13 @@ func score_against_truth(expected, findings) = {
     fp_sorted = sort_hits(fp_list)
     tp = count(matched)
     fp = count(fp_sorted)
-    fn = count(fn_sorted)
-    m = prf(tp, fp, fn)
+    n_fn = count(fn_sorted)
+    m = prf(tp, fp, n_fn)
     rules = per_rule_stats(ordered_expected, findings, fn_sorted, fp_sorted)
     give {
         true_positives: tp,
         false_positives: fp,
-        false_negatives: fn,
+        false_negatives: n_fn,
         precision: m.precision,
         recall: m.recall,
         f1: m.f1,
