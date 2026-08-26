@@ -19,7 +19,7 @@ import "util.j2"
 #   3. extra patterns (command-line --exclude)
 
 func parse_ignore_line(line) = {
-    s = trim(line)
+    s := trim(line)
     if s == "" {
         give null
     }

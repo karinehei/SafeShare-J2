@@ -40,7 +40,7 @@ assert_eq(mask_secret(db), mask_secret(db))
 # Length is preserved for every non-empty input.
 samples = ["x", "ab", "12345678", openai, db, "-----BEGIN RSA PRIVATE KEY-----"]
 for s in samples {
-    m = mask_secret(s)
+    m := mask_secret(s)
     assert_eq(len(m), len(s))
     assert_eq(contains(m, s), false)
 }

@@ -261,6 +261,7 @@ func expand_corpus_kit(kit, copies) = {
     }
     out := []
     i := 0
+    prefix := ""
     repeat i < copies {
         prefix = "r" + str(i)
         for f in kit {
@@ -424,6 +425,7 @@ func score_against_truth(expected, findings) = {
     ordered_expected = sort_hits(expected)
     matched := []
     fn_list := []
+    j := 0
     for e in ordered_expected {
         j = first_unused_match(e, findings, matched)
         if j < 0 {
@@ -433,11 +435,10 @@ func score_against_truth(expected, findings) = {
         }
     }
     fp_list := []
-    j := 0
+    j = 0
     repeat j < count(findings) {
         if not contains(matched, j) {
-            f = findings[j]
-            fp_list = fp_list + [compact_hit(f.file, f.line, f.rule_id)]
+            fp_list = fp_list + [compact_hit(findings[j].file, findings[j].line, findings[j].rule_id)]
         }
         j += 1
     }
@@ -464,17 +465,17 @@ func score_against_truth(expected, findings) = {
 func format_ratio(x) = {
     scaled = round(x * 1000)
     whole = floor(scaled / 1000)
-    frac = scaled - whole * 1000
+    frac := scaled - whole * 1000
     if frac < 0 {
         frac = 0 - frac
     }
-    fs = str(frac)
+    frac_digits := str(frac)
     if frac < 10 {
-        fs = "00" + fs
+        frac_digits = "00" + frac_digits
     } else if frac < 100 {
-        fs = "0" + fs
+        frac_digits = "0" + frac_digits
     }
-    give str(whole) + "." + fs
+    give str(whole) + "." + frac_digits
 }
 
 func pad_rule_id(s) = {

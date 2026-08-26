@@ -30,6 +30,7 @@ func format_int_commas_digits(s) = {
     out := ""
     i := 0
     n = len(s)
+    remaining := 0
     repeat i < n {
         remaining = n - i
         if i > 0 and remaining % 3 == 0 {
@@ -44,15 +45,15 @@ func format_int_commas_digits(s) = {
 func format_fixed_2(x) = {
     scaled = round(x * 100)
     whole = floor(scaled / 100)
-    frac = scaled - whole * 100
+    frac := scaled - whole * 100
     if frac < 0 {
         frac = 0 - frac
     }
-    fs = str(frac)
+    frac_digits := str(frac)
     if frac < 10 {
-        fs = "0" + fs
+        frac_digits = "0" + frac_digits
     }
-    give str(whole) + "." + fs
+    give str(whole) + "." + frac_digits
 }
 
 func format_seconds(ms) = fmt("{} s", format_fixed_2(ms / 1000.0))
@@ -128,7 +129,7 @@ func rate_block(bytes, findings, files, elapsed_ms) = {
 }
 
 func bench_row(label, value) = {
-    lab = label
+    lab := label
     if len(lab) < BENCH_LABEL_WIDTH {
         lab = lab + times_text(" ", BENCH_LABEL_WIDTH - len(lab))
     }

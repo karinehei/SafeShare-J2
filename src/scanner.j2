@@ -139,6 +139,7 @@ func load_text_files(paths, max_bytes) = {
     snapshots := []
     skipped := 0
     bytes := 0
+    got := {snapshot: null, bytes: 0}
     for p in paths {
         got = try_load_text(p, max_bytes)
         if got.snapshot == null {

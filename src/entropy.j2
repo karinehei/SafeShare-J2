@@ -47,19 +47,25 @@ func unique_ratio(s) = {
 }
 
 func has_char_from(s, alphabet) = {
-    for ch in text.chars(s) {
-        if contains(alphabet, ch) {
+    i := 0
+    n = len(s)
+    repeat i < n {
+        if contains(alphabet, s[i]) {
             give true
         }
+        i += 1
     }
     give false
 }
 
 func has_char_outside(s, alphabet) = {
-    for ch in text.chars(s) {
-        if not contains(alphabet, ch) {
+    i := 0
+    n = len(s)
+    repeat i < n {
+        if not contains(alphabet, s[i]) {
             give true
         }
+        i += 1
     }
     give false
 }
@@ -88,10 +94,13 @@ func is_hex_string(s) = {
         give false
     }
     hex = "0123456789abcdefABCDEF"
-    for ch in text.chars(s) {
-        if not contains(hex, ch) {
+    i := 0
+    n = len(s)
+    repeat i < n {
+        if not contains(hex, s[i]) {
             give false
         }
+        i += 1
     }
     give true
 }
@@ -117,10 +126,13 @@ func is_base64_charset(s) = {
     if s == "" {
         give false
     }
-    for ch in text.chars(s) {
-        if not contains(b64, ch) {
+    i := 0
+    n = len(s)
+    repeat i < n {
+        if not contains(b64, s[i]) {
             give false
         }
+        i += 1
     }
     give true
 }

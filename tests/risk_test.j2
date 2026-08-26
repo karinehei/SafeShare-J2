@@ -62,7 +62,7 @@ assert_eq(score_findings(rev).label, shaped.label)
 # Two identical scans are identical (deterministic).
 assert_eq(score_findings(mix).score, score_findings(mix).score)
 
-# Many critical credentials saturate but stay at 100.
+# Many critical credentials hit the band caps (70 + 25 bonus = 95).
 creds := []
 j := 0
 repeat j < 10 {
@@ -70,7 +70,7 @@ repeat j < 10 {
     j += 1
 }
 sat = score_findings(creds)
-assert_eq(sat.score, 100)
+assert_eq(sat.score, 95)
 assert_eq(sat.label, "CRITICAL RISK")
 
 print("risk_test ok")
