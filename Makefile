@@ -30,7 +30,7 @@ help:
 	@echo "SafeShare J2"
 	@echo ""
 	@echo "  make check              fmt-check, tests, native build, demo smoke, self-scan"
-	@echo "  make test               j2 test tests  (pure; no --allow-fs)"
+	@echo "  make test               j2 test tests via J2_PATH=src (pure; no --allow-fs)"
 	@echo "  make fmt                rewrite .j2 files with j2 fmt -w"
 	@echo "  make fmt-check          fail if a .j2 file differs from j2 fmt"
 	@echo "  make build              j2 build $(MAIN) -o $(BIN)"
@@ -54,8 +54,9 @@ all: build
 check: fmt-check test build smoke self-scan
 
 # Tests are pure. Do not point j2 test at $(MAIN).
+# scripts/ci/run-tests.sh puts src on J2_PATH (import search has no ../).
 test:
-	$(J2) test tests
+	sh scripts/ci/run-tests.sh
 
 fmt:
 	@test -n "$(ALL_J2)" || { echo "no .j2 files"; exit 1; }

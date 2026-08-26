@@ -66,7 +66,9 @@ jobs:
       - name: Unit and regression tests
         # Documented test runner. Do not pass src/main.j2 — it is the CLI.
         # Tests are pure (no --allow-fs). A failed assert fails this step.
-        run: j2 test tests
+        # J2_PATH=src is required: import search is next to the file, lib/,
+        # then J2_PATH — not ../src (j2-lang.org/docs/modules.html).
+        run: sh scripts/ci/run-tests.sh
 
       - name: Native build
         run: |
