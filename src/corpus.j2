@@ -485,13 +485,13 @@ func pad_rule_id(s) = {
 
 func format_rule_row(row) = {
     give pad_rule_id(row.rule_id) +
-        text.pad_left(str(row.expected), 5) +
-        text.pad_left(str(row.true_positives), 5) +
-        text.pad_left(str(row.false_positives), 5) +
-        text.pad_left(str(row.false_negatives), 5) +
-        text.pad_left(format_ratio(row.precision), 8) +
-        text.pad_left(format_ratio(row.recall), 8) +
-        text.pad_left(format_ratio(row.f1), 8)
+    text.pad_left(str(row.expected), 5) +
+    text.pad_left(str(row.true_positives), 5) +
+    text.pad_left(str(row.false_positives), 5) +
+    text.pad_left(str(row.false_negatives), 5) +
+    text.pad_left(format_ratio(row.precision), 8) +
+    text.pad_left(format_ratio(row.recall), 8) +
+    text.pad_left(format_ratio(row.f1), 8)
 }
 
 func format_evaluate_report(corpus, result, scored) = {

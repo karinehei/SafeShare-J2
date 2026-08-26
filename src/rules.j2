@@ -278,26 +278,26 @@ func match_to_findings(rule, path, content, m) = {
     if rule.category == "risky_config" {
         evidence = trim(m.text)
         give [make_config_finding({
-            rule_id: rule.id,
-            severity: rule.severity,
-            file: path,
-            line: loc.line,
-            column: loc.column,
-            reason: fmt("Setting: {}\n{}", evidence, rule.description),
-            recommendation: rule.recommendation
-        }, evidence)]
+                    rule_id: rule.id,
+                    severity: rule.severity,
+                    file: path,
+                    line: loc.line,
+                    column: loc.column,
+                    reason: fmt("Setting: {}\n{}", evidence, rule.description),
+                    recommendation: rule.recommendation
+                }, evidence)]
     }
     give [make_finding({
-        rule_id: rule.id,
-        severity: rule.severity,
-        file: path,
-        line: loc.line,
-        column: loc.column,
-        category: rule.category,
-        message: rule.name,
-        reason: rule.description,
-        recommendation: rule.recommendation
-    }, raw)]
+                rule_id: rule.id,
+                severity: rule.severity,
+                file: path,
+                line: loc.line,
+                column: loc.column,
+                category: rule.category,
+                message: rule.name,
+                reason: rule.description,
+                recommendation: rule.recommendation
+            }, raw)]
 }
 
 func matches_to_findings(rule, path, content) = func(m) = match_to_findings(rule, path, content, m)
@@ -317,7 +317,7 @@ func rule_on_content(path, content) = func(rule) = run_rule(rule, path, content)
 # Regex table vs entropy stay separate functions. analyze_snapshot binds four
 # independent family calls; analyze_content_with remains the per-subset engine.
 func analyze_content_with(path, content, rules) =
-    flatten(rules >> rule_on_content(path, content))
+flatten(rules >> rule_on_content(path, content))
 
 # Rule families for independent pure calls (J2 montecarlo shape: sibling
 # bindings, then concat). Ids follow builtin_rules() order within a family.
@@ -347,7 +347,7 @@ RISKY_CONFIG_IDS = [
 func rule_has_id(ids) = func(rule) = contains(ids, rule.id)
 
 func detect_rule_ids(snap, ids) =
-    analyze_content_with(snap.path, snap.content, builtin_rules() ? rule_has_id(ids))
+analyze_content_with(snap.path, snap.content, builtin_rules() ? rule_has_id(ids))
 
 func detect_known_token_formats(snap) = detect_rule_ids(snap, KNOWN_TOKEN_IDS)
 

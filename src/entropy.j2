@@ -178,16 +178,16 @@ func make_entropy_finding(path, content, start, name, raw) = {
     loc = line_column_at(content, start)
     bits = shannon_entropy(raw)
     give make_finding({
-        rule_id: "high_entropy_string",
-        severity: Severity::medium(),
-        file: path,
-        line: loc.line,
-        column: loc.column,
-        category: "heuristic",
-        message: "Possible high-entropy credential",
-        reason: entropy_reason(name, raw, bits),
-        recommendation: "This is a heuristic, not proof of a secret. If the value is a credential, rotate it and load it from the environment. If it is a hash, fixture, or identifier, ignore the finding"
-    }, raw)
+            rule_id: "high_entropy_string",
+            severity: Severity::medium(),
+            file: path,
+            line: loc.line,
+            column: loc.column,
+            category: "heuristic",
+            message: "Possible high-entropy credential",
+            reason: entropy_reason(name, raw, bits),
+            recommendation: "This is a heuristic, not proof of a secret. If the value is a credential, rotate it and load it from the environment. If it is a hash, fixture, or identifier, ignore the finding"
+        }, raw)
 }
 
 func captures_at(pat, content, m) = {
@@ -212,7 +212,7 @@ func named_entropy_record(pat, content, m) = {
 func named_from_pattern(pat, content) = func(m) = named_entropy_record(pat, content, m)
 
 func named_entropy_candidates(content, pat) =
-    flatten(regex.find_all(pat, content) >> named_from_pattern(pat, content))
+flatten(regex.find_all(pat, content) >> named_from_pattern(pat, content))
 
 func quoted_candidate_raw(m, g) = {
     if count(g) > 0 {
@@ -229,7 +229,7 @@ func quoted_entropy_record(content, m) = {
 func quoted_from_content(content) = func(m) = quoted_entropy_record(content, m)
 
 func quoted_entropy_candidates(content) =
-    regex.find_all(ENTROPY_QUOTED, content) >> quoted_from_content(content)
+regex.find_all(ENTROPY_QUOTED, content) >> quoted_from_content(content)
 
 # Three independent regex passes, then an associative concat.
 func entropy_candidates(content) = {

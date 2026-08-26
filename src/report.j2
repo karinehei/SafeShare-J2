@@ -72,11 +72,11 @@ func format_finding_blocks(findings, ai_share) = {
     ordered = sort_findings(findings)
     if count(ordered) == 0 {
         give join([
-            "No findings.",
-            "",
-            "No known secret or credential patterns matched.",
-            "This does not guarantee the files contain no sensitive information."
-        ], "\n")
+                "No findings.",
+                "",
+                "No known secret or credential patterns matched.",
+                "This does not guarantee the files contain no sensitive information."
+            ], "\n")
     }
     give join(ordered >> func(f) = format_finding_block(f, ai_share), "\n\n")
 }
@@ -88,20 +88,20 @@ func format_summary(result) = {
     n_med = count_severity_rank(result.findings, 3)
     n_low = count_severity_rank(result.findings, 2) + count_severity_rank(result.findings, 1)
     give join([
-        REPORT_RULE,
-        stat_line("Files scanned:", result.files_scanned),
-        stat_line("Files skipped:", result.files_skipped),
-        stat_line("Findings:", result.findings_count),
-        "",
-        stat_line("Critical:", n_crit),
-        stat_line("High:", n_high),
-        stat_line("Medium:", n_med),
-        stat_line("Low:", n_low),
-        "",
-        pad_label("Risk score:") + fmt("{} / 100", risk.score),
-        pad_label("Assessment:") + risk.label,
-        pad_label("Safe to share:") + share_verdict(result.findings)
-    ], "\n")
+            REPORT_RULE,
+            stat_line("Files scanned:", result.files_scanned),
+            stat_line("Files skipped:", result.files_skipped),
+            stat_line("Findings:", result.findings_count),
+            "",
+            stat_line("Critical:", n_crit),
+            stat_line("High:", n_high),
+            stat_line("Medium:", n_med),
+            stat_line("Low:", n_low),
+            "",
+            pad_label("Risk score:") + fmt("{} / 100", risk.score),
+            pad_label("Assessment:") + risk.label,
+            pad_label("Safe to share:") + share_verdict(result.findings)
+        ], "\n")
 }
 
 SAFESHARE_VERSION = "0.1.0"
