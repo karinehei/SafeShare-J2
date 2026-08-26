@@ -267,7 +267,7 @@ func secret_from_match(pattern, content, m) = {
 }
 
 func match_to_findings(rule, path, content, m) = {
-    raw = secret_from_match(rule.pattern, content, m)
+    raw := secret_from_match(rule.pattern, content, m)
     if rule.id == "google_api_key" {
         raw = strip_quotes(m.text)
         if len(raw) != 39 {
