@@ -275,9 +275,6 @@ func match_to_findings(rule, path, content, m) = {
         }
     }
     if rule.min_len > 0 and len(raw) < rule.min_len {
-        raw = strip_quotes(m.text)
-    }
-    if rule.min_len > 0 and len(raw) < rule.min_len {
         give []
     }
     if rule.placeholders and looks_like_placeholder(raw) {
