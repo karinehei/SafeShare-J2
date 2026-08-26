@@ -6,8 +6,10 @@ import "finding.j2"
 # typically sit near 5. English and identifiers sit lower.
 #
 # All functions here are pure (`=`): no filesystem, no mutation of
-# caller state. Native J2 may split independent pure calls and
-# associative reductions; do not add a thread API around this module.
+# caller state. Shannon is an associative sum of per-symbol terms.
+# unique(chars) is a small alphabet, well below J2's documented reduction
+# threshold (tens of thousands of elements), so native builds are expected
+# to leave this serial. Do not add a thread API.
 
 ENTROPY_MIN_LEN = 24
 ENTROPY_MIN_BITS = 4.5

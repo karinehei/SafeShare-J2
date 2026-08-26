@@ -5,9 +5,11 @@ import "ignore.j2"
 
 # Filesystem scanner vs analysis
 #
-# I/O stays serial (walk, read, capability errors). Pure analysis is
-# flatten(snapshots >> analyze_snapshot): independent per file, associative
-# concat. Native J2 may split that; do not add a thread API or parallel fs.
+# I/O stays serial (walk, read, capability errors). Pure analysis lives in
+# analyze_snapshot: four independent family calls, then concat (J2 montecarlo
+# shape). flatten(snapshots >> analyze_snapshot) is a clear map, not a
+# documented parallelizer idiom — do not advertise it as auto-parallel.
+# Do not add a thread API or parallel fs.
 #
 # Requires --allow-fs (j2 run --allow-fs ...):
 #   discover_files, collect_files  — fs.is_file, fs.is_dir, fs.list_dir
@@ -153,17 +155,16 @@ func relativize_snapshot(root, snap) = FileSnapshot(path: rel_path(root, snap.pa
 
 func relativize_one(root) = func(snap) = relativize_snapshot(root, snap)
 
-# Independent per snapshot. Pipe is the unary map native J2 already knows.
+# Independent per snapshot. Pure map; not a documented parallelizer idiom.
 func relativize_snapshots(root, snapshots) = snapshots >> relativize_one(root)
 
 func analyze_file(path, content) = analyze_content(path, content)
 
-func analyze_snapshot(snap) = analyze_file(snap.path, snap.content)
-
 func snapshot_path(snap) = snap.path
 
-# Independent analyze_snapshot per file, then one-level concat.
-# This is the file-level parallelizer shape — not a worker pool.
+# Per-file map then concat. Pure and deterministic. Not a documented J2
+# parallelizer shape (that is sibling pure calls, or an element-wise index
+# loop). The compiler may leave this serial; that is expected for small N.
 func analyze_all(snapshots) = flatten(snapshots >> analyze_snapshot)
 
 func snapshot_paths(snapshots) = snapshots >> snapshot_path
@@ -192,8 +193,8 @@ func load_tree(root, max_bytes, extra_excludes) = {
     }
 }
 
-# Pure: independent analyze_all and snapshot_paths, then a map of stats.
-# Native J2 may run those two calls together; both are `=` and share no mutation.
+# Pure: analyze_all then snapshot_paths. Two independent calls; typical N is
+# small, so the cost model may keep this serial.
 func complete_scan(loaded) = {
     findings = analyze_all(loaded.snapshots)
     paths = snapshot_paths(loaded.snapshots)

@@ -314,16 +314,72 @@ func apply_rule(rule, snapshot) = run_rule(rule, snapshot.path, snapshot.content
 
 func rule_on_content(path, content) = func(rule) = run_rule(rule, path, content)
 
-# Independent per rule. Flatten is associative concat of per-rule lists.
+# Regex table vs entropy stay separate functions. analyze_snapshot binds four
+# independent family calls; analyze_content_with remains the per-subset engine.
 func analyze_content_with(path, content, rules) =
     flatten(rules >> rule_on_content(path, content))
 
-# Regex table and entropy do not share mutable state. Bind both, then concat
-# so a native build can treat them as independent pure calls.
-func analyze_content(path, content) = {
-    from_rules = analyze_content_with(path, content, builtin_rules())
-    from_entropy = detect_high_entropy(path, content)
-    give from_rules + from_entropy
+# Rule families for independent pure calls (J2 montecarlo shape: sibling
+# bindings, then concat). Ids follow builtin_rules() order within a family.
+KNOWN_TOKEN_IDS = [
+    "aws_access_key_id",
+    "github_token",
+    "openai_style_api_key",
+    "google_api_key",
+    "jwt_token"
+]
+PRIVATE_KEY_IDS = ["pem_private_key"]
+DATABASE_CREDENTIAL_IDS = ["database_url_credentials"]
+SENSITIVE_DATA_IDS = [
+    "bearer_token",
+    "generic_password",
+    "generic_api_key",
+    "generic_secret_assignment"
+]
+RISKY_CONFIG_IDS = [
+    "debug_enabled",
+    "node_env_development",
+    "cors_wildcard",
+    "tls_verification_disabled",
+    "authentication_disabled"
+]
+
+func rule_has_id(ids) = func(rule) = contains(ids, rule.id)
+
+func detect_rule_ids(snap, ids) =
+    analyze_content_with(snap.path, snap.content, builtin_rules() ? rule_has_id(ids))
+
+func detect_known_token_formats(snap) = detect_rule_ids(snap, KNOWN_TOKEN_IDS)
+
+func detect_private_keys(snap) = detect_rule_ids(snap, PRIVATE_KEY_IDS)
+
+func detect_database_credentials(snap) = detect_rule_ids(snap, DATABASE_CREDENTIAL_IDS)
+
+# Nested fan-out: three pure calls, no shared buffer, concat after all return.
+func detect_secrets(snap) = {
+    known = detect_known_token_formats(snap)
+    private_keys = detect_private_keys(snap)
+    database = detect_database_credentials(snap)
+    give known + private_keys + database
 }
+
+func detect_sensitive_data(snap) = detect_rule_ids(snap, SENSITIVE_DATA_IDS)
+
+func detect_risky_config(snap) = detect_rule_ids(snap, RISKY_CONFIG_IDS)
+
+func detect_entropy(snap) = detect_high_entropy(snap.path, snap.content)
+
+# Documented J2 shape: independent pure calls in one body, then combine.
+# Same four-call pattern as the language's montecarlo example. Pipe/flatten
+# over the rule table is not that shape and is not claimed as auto-parallel.
+func analyze_snapshot(snap) = {
+    secrets = detect_secrets(snap)
+    entropy = detect_entropy(snap)
+    config = detect_risky_config(snap)
+    sensitive = detect_sensitive_data(snap)
+    give secrets + entropy + config + sensitive
+}
+
+func analyze_content(path, content) = analyze_snapshot(FileSnapshot(path: path, content: content))
 
 func run_one(id, path, content) = analyze_content_with(path, content, [rule_by_id(id)])

@@ -164,7 +164,7 @@ I/O errors print a short generic line. They do not dump exception text or file c
 
 J2 `import` splices files into one scope (once). The entry is the program.
 
-The filesystem layer is **impure** and stays serial (`list_dir`, `read_file`, `write_file`). Once files are in memory, each snapshot is analyzed independently: known-secret rules, entropy, sensitive-data heuristics, and risky-config rules do not share mutable state. Native `j2 build` may run those pure calls (and the per-file concat) on more than one core. There is no thread API in this repo. Report *formatting* is also pure; printing, `--json` writes, and sanitize writes return to the filesystem layer.
+The filesystem layer is **impure** and stays serial (`list_dir`, `read_file`, `write_file`). Once files are in memory, `analyze_snapshot` binds four independent pure detector families (known secrets, entropy, risky config, sensitive-data heuristics) and concatenates their results — the same sibling-call shape J2 documents for native builds. Report *formatting* is also pure; printing, `--json` writes, and sanitize writes return to the filesystem layer.
 
 Sanitize is a separate command that reuses discovery and filtering, then a pure redact pass, then serial writes. It does not use the risk score. The diagram still shows it as an output of the same pipeline so the three artifacts sit in one picture.
 
@@ -233,9 +233,17 @@ tests/                assert_eq; no import of src/main.j2
 
 ## Automatic parallelism
 
-J2 has no thread API. `j2 build` may parallelize independent pure calls and associative reductions (per-file `analyze_snapshot`, rules vs entropy, Shannon as a sum of per-symbol terms). Small loops stay serial; the runtime is not required to split a five-file demo.
+J2 has no thread API. Native `j2 build` pattern-matches a few shapes: **independent pure calls in one function body**, associative reductions over large sequences, element-wise index loops, and dense numeric kernels. Parallel dispatch has a cost; reductions are documented to stay serial below tens of thousands of elements.
 
-I/O, overlap resolution in sanitization, line/column scans, and timed benchmark trials stay sequential on purpose. Compare interpreter vs native on the **Analyze** MB/s line (in-memory `complete_scan`), not on `j2 build` wall time.
+SafeShare is structured so the compiler can *see* those shapes where they apply:
+
+- `analyze_snapshot` binds four detector families as sibling pure calls, then concatenates. That matches the published montecarlo example (`a, b, c, d := …; give a+b+c+d`).
+- `score_findings` binds independent severity counts the same way.
+- Shannon entropy is an associative sum, but the alphabet of a token is tiny, so the cost model is expected to leave it serial.
+
+`flatten(snapshots >> analyze_snapshot)` is a clear per-file map. It is **not** a documented parallelizer idiom. A five-file demo will almost certainly stay serial. Compare interpreter vs native on the **Analyze** MB/s line (in-memory `complete_scan`) on a generated corpus; do not claim speedup unless that measurement shows it.
+
+I/O, sanitization overlap resolution, line/column scans, first-hit fingerprint dedup, and timed benchmark trials stay sequential on purpose.
 
 ## Benchmark
 

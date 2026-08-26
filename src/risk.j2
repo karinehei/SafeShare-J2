@@ -50,14 +50,18 @@ func risk_label(score) = {
     give "LOW RISK"
 }
 
-# Independent reductions over the same list (montecarlo shape), then a pure mix.
-# Do not fuse these into one mutating multi-counter loop to "save a pass".
+# Independent count queries (montecarlo-style sibling calls), then a pure mix.
+# Finding lists are almost always far below the reduction size threshold
+# (tens of thousands). Bindings stay separate so independence is visible;
+# do not fuse into one mutating multi-counter loop.
 func score_findings(findings) = {
     n_crit = count_severity_rank(findings, 5)
     n_high = count_severity_rank(findings, 4)
     n_med = count_severity_rank(findings, 3)
-    n_low = count_severity_rank(findings, 2) + count_severity_rank(findings, 1)
+    n_low_sev = count_severity_rank(findings, 2)
+    n_info = count_severity_rank(findings, 1)
     n_cred = count_critical_credentials(findings)
+    n_low = n_low_sev + n_info
     p_crit = band_points(n_crit, 40, 15, 70)
     p_high = band_points(n_high, 20, 8, 40)
     p_med = band_points(n_med, 8, 3, 18)
