@@ -51,7 +51,7 @@ func builtin_rules() = [
         category: "secret",
         severity: Severity::high(),
         applies: "*",
-        pattern: "\\b(AIza[A-Za-z0-9_-]{35})\\b",
+        pattern: "\\bAIza[A-Za-z0-9_-]+\\b",
         description: "Heuristic: AIza plus 35 characters, a common Google API key shape. Not every AIza string is a live Google or Gemini key",
         recommendation: "Restrict or delete the key in Google Cloud and stop committing it",
         placeholders: false,
@@ -268,6 +268,12 @@ func secret_from_match(pattern, content, m) = {
 
 func match_to_findings(rule, path, content, m) = {
     raw = secret_from_match(rule.pattern, content, m)
+    if rule.id == "google_api_key" {
+        raw = strip_quotes(m.text)
+        if len(raw) != 39 {
+            give []
+        }
+    }
     if rule.min_len > 0 and len(raw) < rule.min_len {
         give []
     }

@@ -5,7 +5,7 @@ import "rules.j2"
 
 env = "# SafeShare demo — INTENTIONALLY FAKE and unusable.\n# The access key id is the published AWS documentation example.\n# It cannot sign requests and must not be used outside this fixture.\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nS3_BUCKET=safeshare-demo-example\nDATABASE_URL=postgres://127.0.0.1:5432/safeshare_demo\n"
 
-config = "// SafeShare demo — INTENTIONALLY FAKE local config.\n// CORS=* and disabled TLS checks are here so a scan has something\n// besides credentials to talk about. Do not copy this into production.\n\nexport const config = {\n  CORS: \"*\",\n  rejectUnauthorized: false,\n}\n"
+config = "// SafeShare demo — INTENTIONALLY FAKE local config.\n// Wildcard CORS and disabled TLS checks are here so a scan has something\n// besides credentials to talk about. Do not copy this into production.\n\nexport const config = {\n  CORS: \"*\",\n  rejectUnauthorized: false,\n}\n"
 
 app = "import { config } from \"./config.ts\"\n\n// SafeShare demo — INTENTIONALLY FAKE session.\n// Unsigned alg=none JWT. It authenticates nowhere. Do not send it\n// to a real API or paste it into an assistant chat as a live token.\nconst demoSession = \"eyJhbGciOiJub25lIn0.eyJmb28iOiJiYXIifQ.signaturexx\"\n\nexport function handler() {\n  return {\n    cors: config.CORS,\n    session: demoSession,\n    note: \"synthetic demo user — not a real account\",\n  }\n}\n"
 
