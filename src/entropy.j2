@@ -211,8 +211,9 @@ func named_entropy_record(pat, content, m) = {
 
 func named_from_pattern(pat, content) = func(m) = named_entropy_record(pat, content, m)
 
-func named_entropy_candidates(content, pat) =
-flatten(regex.find_all(pat, content) >> named_from_pattern(pat, content))
+func named_entropy_candidates(content, pat) = {
+    give flatten(regex.find_all(pat, content) >> named_from_pattern(pat, content))
+}
 
 func quoted_candidate_raw(m, g) = {
     if count(g) > 0 {
@@ -228,8 +229,9 @@ func quoted_entropy_record(content, m) = {
 
 func quoted_from_content(content) = func(m) = quoted_entropy_record(content, m)
 
-func quoted_entropy_candidates(content) =
-regex.find_all(ENTROPY_QUOTED, content) >> quoted_from_content(content)
+func quoted_entropy_candidates(content) = {
+    give regex.find_all(ENTROPY_QUOTED, content) >> quoted_from_content(content)
+}
 
 # Three independent regex passes, then an associative concat.
 func entropy_candidates(content) = {

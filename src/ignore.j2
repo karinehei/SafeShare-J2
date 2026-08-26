@@ -50,14 +50,16 @@ func skip_dir_ignore_name(name) = name != "." and name != ".."
 
 func ignore_from_skip_dir(name) = parse_ignore_line(name + "/")
 
-func builtin_ignore_rules() =
-((SKIP_DIR_NAMES ? skip_dir_ignore_name) >> ignore_from_skip_dir) + [
-    parse_ignore_line("SANITIZATION_REPORT.json"),
-    parse_ignore_line("SAFESHARE_GROUND_TRUTH.json")
-]
+func builtin_ignore_rules() = {
+    give ((SKIP_DIR_NAMES ? skip_dir_ignore_name) >> ignore_from_skip_dir) + [
+        parse_ignore_line("SANITIZATION_REPORT.json"),
+        parse_ignore_line("SAFESHARE_GROUND_TRUTH.json")
+    ]
+}
 
-func merge_ignore_rules(file_text, extra) =
-builtin_ignore_rules() + parse_ignore_rules(file_text) + parse_ignore_rules(join(extra, "\n"))
+func merge_ignore_rules(file_text, extra) = {
+    give builtin_ignore_rules() + parse_ignore_rules(file_text) + parse_ignore_rules(join(extra, "\n"))
+}
 
 # One *: the matched middle must not contain "/".
 func star_match(pat, s) = {

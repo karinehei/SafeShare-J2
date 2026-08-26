@@ -254,13 +254,13 @@ func prefix_corpus_file(prefix, f) = {
     }
 }
 
-func expand_corpus_kit(kit, repeat) = {
-    if repeat <= 1 {
+func expand_corpus_kit(kit, copies) = {
+    if copies <= 1 {
         give kit
     }
     out := []
     i := 0
-    repeat i < repeat {
+    repeat i < copies {
         prefix = "r" + str(i)
         for f in kit {
             out = out + [prefix_corpus_file(prefix, f)]
@@ -480,7 +480,7 @@ func pad_rule_id(s) = {
     if len(s) >= 28 {
         give s
     }
-    give s + text.repeat(" ", 28 - len(s))
+    give s + times_text(" ", 28 - len(s))
 }
 
 func format_rule_row(row) = {

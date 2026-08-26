@@ -14,7 +14,7 @@ func pad_label(s) = {
     if len(s) >= REPORT_LABEL_WIDTH {
         give s
     }
-    give s + text.repeat(" ", REPORT_LABEL_WIDTH - len(s))
+    give s + times_text(" ", REPORT_LABEL_WIDTH - len(s))
 }
 
 func pad_num(n) = text.pad_left(str(n), REPORT_NUM_WIDTH)
@@ -65,7 +65,7 @@ func pad_right_sev(s) = {
     if len(s) >= REPORT_SEV_WIDTH {
         give s
     }
-    give s + text.repeat(" ", REPORT_SEV_WIDTH - len(s))
+    give s + times_text(" ", REPORT_SEV_WIDTH - len(s))
 }
 
 func format_finding_blocks(findings, ai_share) = {

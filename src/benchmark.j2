@@ -130,7 +130,7 @@ func rate_block(bytes, findings, files, elapsed_ms) = {
 func bench_row(label, value) = {
     lab = label
     if len(lab) < BENCH_LABEL_WIDTH {
-        lab = lab + text.repeat(" ", BENCH_LABEL_WIDTH - len(lab))
+        lab = lab + times_text(" ", BENCH_LABEL_WIDTH - len(lab))
     }
     give lab + text.pad_left(value, BENCH_VALUE_WIDTH)
 }

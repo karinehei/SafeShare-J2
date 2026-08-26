@@ -2,6 +2,18 @@
 
 DEFAULT_MAX_TEXT_BYTES = 1_000_000
 
+# `repeat` is a loop keyword, so text.repeat is a SyntaxError (got Repeat).
+func times_text(s, n) = {
+    out := ""
+    if n <= 0 {
+        give ""
+    }
+    for _ in 1..n {
+        out = out + s
+    }
+    give out
+}
+
 SKIP_DIR_NAMES = [
     ".",
     "..",

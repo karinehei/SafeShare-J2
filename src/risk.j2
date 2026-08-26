@@ -29,11 +29,13 @@ func band_points(n, first, extra, cap) = {
     give min(cap, first + extra * (n - 1))
 }
 
-func count_severity_rank(findings, rank) =
-count(findings ? (func(f) = f.severity.rank == rank))
+func count_severity_rank(findings, rank) = {
+    give count(findings ? (func(f) = f.severity.rank == rank))
+}
 
-func is_critical_credential(f) =
-f.severity.rank == 5 and (f.category == "secret" or f.category == "credential")
+func is_critical_credential(f) = {
+    give f.severity.rank == 5 and (f.category == "secret" or f.category == "credential")
+}
 
 func count_critical_credentials(findings) = count(findings ? is_critical_credential)
 

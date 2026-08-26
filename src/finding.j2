@@ -1,3 +1,5 @@
+import "util.j2"
+
 # SafeShare result model.
 # FileSnapshot holds source bytes during analysis.
 # Finding never stores a complete secret — only a mask and a SHA-256 fingerprint.
@@ -48,7 +50,7 @@ func mask_secret(raw) = {
         give ""
     }
     k = mask_keep(n)
-    give slice(raw, 0, k.head) + text.repeat("*", n - k.head - k.tail) + slice(raw, n - k.tail, n)
+    give slice(raw, 0, k.head) + times_text("*", n - k.head - k.tail) + slice(raw, n - k.tail, n)
 }
 
 # Same rule + same secret → same fingerprint, across files and scans.
