@@ -1,4 +1,5 @@
 benchmark-corpus/
 corpus-out/
 /safeshare
+/tests/lib
 

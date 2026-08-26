@@ -71,11 +71,11 @@ j2 --version
 2. Clone this repository. J2 has no package manager; `import` splices source files into one program.
 
 ```sh
-J2_PATH=src j2 test tests
-make check
+make test
+# or: sh scripts/ci/run-tests.sh
 ```
 
-`import` looks next to the file, in that file’s `lib/`, then `J2_PATH` — not in `../src`. Tests therefore set `J2_PATH=src` (`make test` does this). `make help` lists local targets (format, tests, native build, demo scan, corpus). Tests are pure: they do not call `fs` and do not need `--allow-fs`. Do not point `j2 test` at `src/main.j2` — that file **is** the CLI and runs at load.
+Each `tests/*_test.j2` is a program of `assert_eq` checks, run with `j2 run` (interpreter). J2 0.1.0’s `j2 test` reports `FAIL file.j2 ()` with no diagnostic on this tree, so CI does not use it. Imports resolve through `tests/lib` → `src` (and `J2_PATH=src`): J2 looks next to the file, then that file’s `lib/`, then `J2_PATH` — not `../src`. Tests are pure: they do not call `fs` and do not need `--allow-fs`. Do not run `src/main.j2` under the test runner — that file **is** the CLI and runs at load.
 
 ## CI
 
@@ -83,7 +83,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-15** (Apple Silicon)
 
 1. Installs J2 from the official [v0.1.0 tarball](https://github.com/JasnamSinghArora/j2/releases/tag/v0.1.0) (`j2-0.1.0-aarch64-apple-darwin.tar.gz`) after checking the published SHA-256.
 2. Checks that committed `.j2` files match `j2 fmt` (stdout vs file; J2 0.1.0 has no `--check`).
-3. Runs `J2_PATH=src j2 test tests`.
+3. Runs each `tests/*_test.j2` with `j2 run` (interpreter; see `scripts/ci/run-tests.sh`).
 4. Compiles `j2 build src/main.j2 -o safeshare` and smokes `demo-project/` (JSON, five expected findings, no raw fixture secrets).
 5. Self-scans the repo with `./safeshare --allow-fs scan . --ai-share`. Known synthetic trees are listed in `.safeshareignore` (`demo-project/`, `tests/`, …), not by weakening detectors.
 

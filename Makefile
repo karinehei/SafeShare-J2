@@ -18,7 +18,7 @@ RUN := $(J2) run --allow-fs $(MAIN)
 NATIVE := ./$(BIN) --allow-fs
 
 SRC_J2 := $(shell find src -name '*.j2' | LC_ALL=C sort)
-ALL_J2 := $(shell find . -name '*.j2' ! -path './.git/*' | LC_ALL=C sort)
+ALL_J2 := $(shell find . -name '*.j2' ! -path './.git/*' ! -path './tests/lib/*' | LC_ALL=C sort)
 
 .DEFAULT_GOAL := help
 
@@ -30,7 +30,7 @@ help:
 	@echo "SafeShare J2"
 	@echo ""
 	@echo "  make check              fmt-check, tests, native build, demo smoke, self-scan"
-	@echo "  make test               j2 test tests via J2_PATH=src (pure; no --allow-fs)"
+	@echo "  make test               interpreter j2 run of tests/*_test.j2 (pure; no --allow-fs)"
 	@echo "  make fmt                rewrite .j2 files with j2 fmt -w"
 	@echo "  make fmt-check          fail if a .j2 file differs from j2 fmt"
 	@echo "  make build              j2 build $(MAIN) -o $(BIN)"
@@ -53,8 +53,7 @@ all: build
 # Local analogue of .github/workflows/ci.yml (no J2 install).
 check: fmt-check test build smoke self-scan
 
-# Tests are pure. Do not point j2 test at $(MAIN).
-# scripts/ci/run-tests.sh puts src on J2_PATH (import search has no ../).
+# Tests are pure. Do not point j2 test/run at $(MAIN).
 test:
 	sh scripts/ci/run-tests.sh
 
