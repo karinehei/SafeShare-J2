@@ -102,7 +102,7 @@ func star_match(pat, s) = {
     if len(prefix) + len(rest) > len(t) {
         give false
     }
-    mid = slice(t, len(prefix), len(t) - len(rest))
+    mid = safe_slice(t, len(prefix), len(t) - len(rest))
     give not contains(mid, "/")
 }
 

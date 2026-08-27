@@ -61,4 +61,8 @@ assert_eq(count(detect_high_entropy("notes.md", quiet)), 0)
 dup = "session_blob = \"" + TOKEN + "\"\n"
 assert_eq(count(detect_high_entropy("cfg.ts", dup)), 1)
 
+# Unicode before a quoted token: regex start must not slice past len().
+uni = "────────────────────────\nservice_token = \"" + TOKEN + "\"\n"
+assert_eq(count(detect_high_entropy("notes.md", uni)), 1)
+
 print("entropy_test ok")

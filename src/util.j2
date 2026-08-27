@@ -88,6 +88,30 @@ func dirname(path) = {
 
 func should_skip_name(name) = contains(SKIP_DIR_NAMES, lower(name))
 
+# J2 0.1.0 raises ValueError when start > end (regex start can be a byte
+# offset while len() is in characters — product sources include Unicode).
+func safe_slice(s, i, j) = {
+    n = len(s)
+    a := i
+    b := j
+    if a < 0 {
+        a = 0
+    }
+    if b < 0 {
+        b = 0
+    }
+    if a > n {
+        a = n
+    }
+    if b > n {
+        b = n
+    }
+    if a > b {
+        b = a
+    }
+    give slice(s, a, b)
+}
+
 # Strip a leading "./" so native fs probes get "demo-project", not "./demo-project".
 func usable_fs_path(p) = {
     s = trim_slash(normalize_rel(p))
@@ -95,7 +119,7 @@ func usable_fs_path(p) = {
         give "."
     }
     if text.starts_with(s, "./") {
-        rest = slice(s, 2, len(s))
+        rest = safe_slice(s, 2, len(s))
         if rest == "" {
             give "."
         }

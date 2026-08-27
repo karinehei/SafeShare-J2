@@ -1,6 +1,11 @@
 import "scanner.j2"
 import "cli.j2"
 
+assert_eq(safe_slice("abc", 0, 2), "ab")
+assert_eq(safe_slice("abc", 2, 1), "")
+assert_eq(safe_slice("abc", 9, 12), "")
+assert_eq(safe_slice("abc", 0, 0), "")
+
 assert_eq(usable_fs_path("./demo-project"), "demo-project")
 assert_eq(usable_fs_path("demo-project"), "demo-project")
 assert_eq(usable_fs_path("./"), ".")

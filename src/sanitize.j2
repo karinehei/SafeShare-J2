@@ -61,7 +61,7 @@ func db_redacted_match(matched) = {
 }
 
 func pem_block_end(content, start) = {
-    rest = slice(content, start, len(content))
+    rest = safe_slice(content, start, len(content))
     m = regex.find("-----END [A-Z0-9 ]*PRIVATE KEY-----", rest)
     if m == null {
         give start + len(rest)
@@ -163,7 +163,7 @@ func collect_redact_spans(path, content) = {
 func apply_redact_spans(content, spans) = {
     out := content
     for s in sort_by(spans, span_start_desc) {
-        out = slice(out, 0, s.start) + s.replacement + slice(out, s.end, len(out))
+        out = safe_slice(out, 0, s.start) + s.replacement + safe_slice(out, s.end, len(out))
     }
     give out
 }

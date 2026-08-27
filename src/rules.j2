@@ -258,7 +258,7 @@ func looks_like_placeholder(value) = {
 }
 
 func secret_from_match(pattern, content, m) = {
-    rest = slice(content, m.start, len(content))
+    rest = safe_slice(content, m.start, len(content))
     g = regex.groups(pattern, rest)
     if type(g) == "seq" and count(g) > 0 {
         give strip_quotes(g[count(g) - 1])

@@ -234,12 +234,16 @@ func make_entropy_finding(path, content, start, name, raw) = {
 }
 
 func captures_at(pat, content, m) = {
-    g = regex.groups(pat, slice(content, m.start, len(content)))
+    g = regex.groups(pat, safe_slice(content, m.start, len(content)))
     if type(g) != "seq" {
         give []
     }
-    if count(g) > 0 and g[0] == m.text {
-        give slice(g, 1, count(g))
+    n = count(g)
+    if n > 1 and g[0] == m.text {
+        give safe_slice(g, 1, n)
+    }
+    if n == 1 and g[0] == m.text {
+        give []
     }
     give g
 }
