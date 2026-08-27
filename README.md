@@ -84,7 +84,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-26** (hosted Apple S
 1. Installs J2 from the official [v0.1.0 tarball](https://github.com/JasnamSinghArora/j2/releases/tag/v0.1.0) (`j2-0.1.0-aarch64-apple-darwin.tar.gz`) after checking the published SHA-256.
 2. Checks that committed `.j2` files match `j2 fmt` (stdout vs file; J2 0.1.0 has no `--check`).
 3. Runs each `tests/*_test.j2` with `j2 run` (interpreter; see `scripts/ci/run-tests.sh`).
-4. Compiles `j2 build src/main.j2 -o safeshare` (binary `--help`) and smokes `demo-project/` through `J2_FORCE_NATIVE=1 j2 run --allow-fs` (JSON, five expected findings, no raw fixture secrets).
+4. Compiles `j2 build src/main.j2 -o safeshare` (binary `--help`) and smokes `demo-project/` with `j2 --allow-fs src/main.j2 scan …` (JSON, five expected findings, no raw fixture secrets).
 5. Self-scans the repo the same way (`scan . --ai-share`). Known synthetic trees are listed in `.safeshareignore` (`demo-project/`, `tests/`, …), not by weakening detectors.
 
 Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a separate manual workflow (`.github/workflows/benchmark.yml`); they are not a required PR check. GitHub-hosted timings are noisy and should not be quoted as product performance.
@@ -98,25 +98,24 @@ Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a sep
 j2 run src/main.j2 ./demo-project
 
 # scan
-j2 run --allow-fs src/main.j2 ./demo-project
-j2 run --allow-fs src/main.j2 scan ./demo-project --ai-share
-j2 run --allow-fs src/main.j2 scan ./demo-project --json safeshare-report.json
-j2 run --allow-fs src/main.j2 scan ./demo-project --max-bytes 500000 --exclude "*.min.js"
+j2 --allow-fs src/main.j2 ./demo-project
+j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
+j2 --allow-fs src/main.j2 scan ./demo-project --json safeshare-report.json
+j2 --allow-fs src/main.j2 scan ./demo-project --max-bytes 500000 --exclude "*.min.js"
 
 # sanitize: DEST must be a sibling or absolute path outside PATH
-j2 run --allow-fs src/main.j2 sanitize ./demo-project --output ./demo-project-safe
+j2 --allow-fs src/main.j2 sanitize ./demo-project --output ./demo-project-safe
 
 # corpus (synthetic; do not treat F1 as production accuracy)
-j2 run --allow-fs src/main.j2 generate-corpus ./benchmark-corpus
-j2 run --allow-fs src/main.j2 evaluate ./benchmark-corpus
-j2 run --allow-fs src/main.j2 benchmark ./benchmark-corpus
+j2 --allow-fs src/main.j2 generate-corpus ./benchmark-corpus
+j2 --allow-fs src/main.j2 evaluate ./benchmark-corpus
+j2 --allow-fs src/main.j2 benchmark ./benchmark-corpus
 
-# same program, native engine (grant still belongs on j2)
-J2_FORCE_NATIVE=1 j2 run --allow-fs src/main.j2 scan ./demo-project
+# native compile (filesystem grant still belongs on j2, not on ./safeshare)
 j2 build src/main.j2 -o safeshare
 ```
 
-J2 0.1.0 grants `--allow-fs` on the **`j2`** command. A file from `j2 build` stays deny-by-default; passing `--allow-fs` to `./safeshare` is stripped from SafeShare argv so it is not mistaken for the scan root, but it does not enable `fs`. Use `j2 run --allow-fs` or `J2_FORCE_NATIVE=1 j2 run --allow-fs`.
+`--allow-fs` goes on **`j2`**, before the `.j2` file (`j2 --allow-fs src/main.j2 scan PATH`). `j2 run --allow-fs …` is the same grant. A file from `j2 build` stays deny-by-default. `J2_FORCE_NATIVE=1` on 0.1.0 does not forward SafeShare argv (it prints usage and exits 2). SafeShare still strips leftover capability flags from `proc.argv()` so they are not taken as the scan root.
 
 `evaluate` is also accepted as `score`.
 
@@ -264,10 +263,9 @@ I/O, sanitization overlap resolution, line/column scans, first-hit fingerprint d
 Numbers are measured with `time.now` / `time.elapsed_ms` on **your** machine. This README does not invent throughput.
 
 ```sh
-j2 run --allow-fs src/main.j2 generate-corpus ./benchmark-corpus
-j2 run --allow-fs src/main.j2 benchmark ./benchmark-corpus
+j2 --allow-fs src/main.j2 generate-corpus ./benchmark-corpus
+j2 --allow-fs src/main.j2 benchmark ./benchmark-corpus
 j2 build src/main.j2 -o safeshare
-J2_FORCE_NATIVE=1 j2 run --allow-fs src/main.j2 benchmark ./benchmark-corpus
 ```
 
 Default: 1 untimed warmup, then 5 timed trials; headline elapsed is the **median**. End-to-end includes load + analyze. A separate Analyze section times `complete_scan` on already-loaded snapshots. `--trials`, `--warmup`, and `--json FILE` are optional.

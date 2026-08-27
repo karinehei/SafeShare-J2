@@ -72,10 +72,11 @@ jobs:
         env:
           TRIALS: ${{ github.event.inputs.trials }}
           WARMUP: ${{ github.event.inputs.warmup }}
-          J2_FORCE_NATIVE: "1"
         run: |
           set -euo pipefail
-          j2 run --allow-fs src/main.j2 benchmark "$CORPUS" \
+          # J2_FORCE_NATIVE=1 drops argv on 0.1.0. Time the native-compiled
+          # analyze path by running through j2 after j2 build has warmed the cache.
+          j2 --allow-fs src/main.j2 benchmark "$CORPUS" \
             --trials "$TRIALS" --warmup "$WARMUP" \
             --json "${RUNNER_TEMP}/benchmark-native.json"
 

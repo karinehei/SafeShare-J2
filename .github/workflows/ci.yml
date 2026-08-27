@@ -90,10 +90,9 @@ jobs:
           grep -q "SafeShare J2" "${RUNNER_TEMP}/safeshare-help.txt"
 
       - name: Demo-project smoke test
-        # Native engine via j2 so --allow-fs is actually granted (J2 0.1.0).
+        # Interpreter scan with --allow-fs on j2. J2_FORCE_NATIVE=1 on 0.1.0
+        # drops program argv (usage, exit 2). A j2-build binary does not grant fs.
         # --allow-net is never passed. JSON is the deterministic artifact.
-        env:
-          J2_FORCE_NATIVE: "1"
         run: |
           set -euo pipefail
           json1="${RUNNER_TEMP}/demo-report-1.json"
@@ -102,8 +101,8 @@ jobs:
           demo="demo-project"
           test -d "$demo"
 
-          j2 run --allow-fs src/main.j2 scan "$demo" --json "$json1" | tee "$log"
-          j2 run --allow-fs src/main.j2 scan "$demo" --json "$json2" > /dev/null
+          j2 --allow-fs src/main.j2 scan "$demo" --json "$json1" | tee "$log"
+          j2 --allow-fs src/main.j2 scan "$demo" --json "$json2" > /dev/null
 
           cmp -s "$json1" "$json2"
           python3 scripts/ci/verify-demo-smoke.py "$json1" "$log"
@@ -111,10 +110,8 @@ jobs:
       - name: Self-scan repository
         # Catch accidental real credentials in product sources.
         # Intentional fixtures are listed in .safeshareignore — not by weakening rules.
-        env:
-          J2_FORCE_NATIVE: "1"
         run: |
           set -euo pipefail
           json="${RUNNER_TEMP}/self-scan.json"
-          j2 run --allow-fs src/main.j2 scan . --ai-share --json "$json" | tee "${RUNNER_TEMP}/self-scan.txt"
+          j2 --allow-fs src/main.j2 scan . --ai-share --json "$json" | tee "${RUNNER_TEMP}/self-scan.txt"
           python3 scripts/ci/verify-self-scan.py "$json"
