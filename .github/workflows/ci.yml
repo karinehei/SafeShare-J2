@@ -1,13 +1,14 @@
 # SafeShare CI — format, tests, native build, demo smoke, repo self-scan.
-# J2 0.1.0 is macOS Apple Silicon only. Use macos-latest (arm64 pool), not a
-# pinned macos-15 label — that queue is often idle for several minutes.
-# install-j2.sh refuses Darwin/x86_64, so intel large runners cannot sneak in.
+# J2 0.1.0 is aarch64-darwin only. Pin macos-26 (hosted Apple Silicon). Do not
+# use macos-latest (alias, recently remapped) or macos-*-large (Intel).
+# install-j2.sh exits unless uname is Darwin/arm64.
 
 name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -19,7 +20,7 @@ permissions:
 jobs:
   check:
     name: Format, test, build, smoke, self-scan
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 45
 
     steps:
