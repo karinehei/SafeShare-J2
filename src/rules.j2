@@ -257,13 +257,33 @@ func looks_like_placeholder(value) = {
     give false
 }
 
+func value_after_assign(s) = {
+    eq = text.find(s, "=")
+    col = text.find(s, ":")
+    sep := null
+    if eq != null {
+        sep = eq
+    }
+    if col != null {
+        if sep == null {
+            sep = col
+        } else if col < sep {
+            sep = col
+        }
+    }
+    if sep == null {
+        give strip_quotes(s)
+    }
+    give strip_quotes(trim(safe_slice(s, sep + 1, len(s))))
+}
+
 func secret_from_match(pattern, content, m) = {
     rest = safe_slice(content, m.start, len(content))
     g = regex.groups(pattern, rest)
     if type(g) == "seq" and count(g) > 0 {
         give strip_quotes(g[count(g) - 1])
     }
-    give strip_quotes(m.text)
+    give value_after_assign(m.text)
 }
 
 func match_to_findings(rule, path, content, m) = {

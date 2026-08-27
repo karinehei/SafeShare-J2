@@ -14,7 +14,7 @@ Hosted scanners assume a git host, a SaaS account, and a network. They are the w
 
 SafeShare walks a directory you name, reads text files (size-capped), and runs a compiled-in table of regular expressions plus a Shannon-entropy heuristic. It prints a terminal report and, optionally, JSON.
 
-Findings never store the full secret: only a length-preserving mask and a SHA-256 fingerprint of `(rule_id, raw)`. JSON `safe_to_share` is always `false`. An empty scan prints that the miss is **not a guarantee**. The share line is `NO` when credential-shaped hits exist, otherwise `not guaranteed` — never `YES`.
+Findings never store a complete secret — only a length-preserving mask and a SHA-256 fingerprint of `(rule_id, raw)`. JSON `safe_to_share` is always `false`. An empty scan prints that the miss is **not a guarantee**. The share line is `NO` when credential-shaped hits exist, otherwise `not guaranteed` — never `YES`.
 
 `sanitize` writes a sibling copy with a handful of high-confidence patterns replaced by `[SAFESHARE_REDACTED]`. Heuristic hits are copied through on purpose; the report says so.
 

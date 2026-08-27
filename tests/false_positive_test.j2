@@ -36,4 +36,7 @@ assert_eq(count(analyze_content("aws.env", "id = AKIATOOSHORT\nid = akiaiosfodnn
 assert_eq(count(analyze_content("gh.env", "note = ghp_short\nnote = github_pat_tooshort\n")), 0)
 assert_eq(count(analyze_content("oa.env", "key=sk-short\nstripe=sk_live_notopenai\n")), 0)
 
+# Documentation that says "secret:" in prose must not count as an assignment.
+assert_clean("README.md", "Findings never store the full secret: only a length-preserving mask.\n")
+
 print("false_positive_test ok")
