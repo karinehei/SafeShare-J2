@@ -623,15 +623,7 @@ func load_ground_truth(root) = {
 }
 
 func evaluate_corpus(root, max_bytes, extra_excludes, json_out) = {
-    try {
-        if not fs.exists(root) {
-            print(fmt("path not found: {}", root))
-            proc.exit(2)
-        }
-    } else RuntimeError {
-        print("cannot access corpus path")
-        proc.exit(2)
-    }
+    root = require_existing_path(root)
     truth = load_ground_truth(root)
     expected := []
     for e in truth.expected {

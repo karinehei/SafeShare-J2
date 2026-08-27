@@ -88,6 +88,21 @@ func dirname(path) = {
 
 func should_skip_name(name) = contains(SKIP_DIR_NAMES, lower(name))
 
+# Strip a leading "./" so native fs probes get "demo-project", not "./demo-project".
+func usable_fs_path(p) = {
+    s = trim_slash(normalize_rel(p))
+    if s == "" {
+        give "."
+    }
+    if text.starts_with(s, "./") {
+        s = slice(s, 2, len(s))
+        if s == "" {
+            give "."
+        }
+    }
+    give s
+}
+
 func canonical_path_key(p) = {
     s = lower(normalize_rel(p))
     if text.starts_with(s, "./") {

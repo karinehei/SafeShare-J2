@@ -429,15 +429,7 @@ func sanitize_tree(src, dest) = {
         print("use a sibling or absolute path, e.g. ./project-safe or /tmp/project-safe")
         proc.exit(2)
     }
-    try {
-        if not fs.exists(src) {
-            print(fmt("path not found: {}", src))
-            proc.exit(2)
-        }
-    } else RuntimeError {
-        print("cannot access source path")
-        proc.exit(2)
-    }
+    src = require_existing_path(src)
 
     ignore = merge_ignore_rules(read_safeshareignore(src), [])
     discovered = discover_files(src, ignore)

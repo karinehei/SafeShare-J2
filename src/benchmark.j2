@@ -263,15 +263,7 @@ func run_analyze_trials(loaded, warmup, trials) = {
 }
 
 func run_benchmark(root, max_bytes, extra_excludes, json_out) = {
-    try {
-        if not fs.exists(root) {
-            print(fmt("path not found: {}", root))
-            proc.exit(2)
-        }
-    } else RuntimeError {
-        print("cannot access corpus path")
-        proc.exit(2)
-    }
+    root = require_existing_path(root)
 
     argv = program_args(proc.argv())
     trials = clamp_int(parse_positive_int_flag(argv, "--trials", DEFAULT_BENCH_TRIALS), 1, MAX_BENCH_TRIALS)

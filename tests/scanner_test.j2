@@ -1,6 +1,12 @@
 import "scanner.j2"
 import "cli.j2"
 
+assert_eq(usable_fs_path("./demo-project"), "demo-project")
+assert_eq(usable_fs_path("demo-project"), "demo-project")
+assert_eq(usable_fs_path("./"), ".")
+assert_eq(usable_fs_path("."), ".")
+assert_eq(resolve_scan_root("./demo-project"), "demo-project")
+
 assert_eq(join_path("proj", "a.txt"), "proj/a.txt")
 assert_eq(join_path("proj/", "a.txt"), "proj/a.txt")
 assert_eq(should_skip_name("."), true)

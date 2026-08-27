@@ -14,8 +14,8 @@ import "ignore.j2"
 # Requires --allow-fs (j2 run --allow-fs ...):
 #   discover_files, collect_files  — fs.is_file, fs.is_dir, fs.list_dir
 #   try_load_text, load_text_files — fs.metadata, fs.read_file
-#   read_safeshareignore, load_tree
-#   run_scan in main.j2            — fs.exists
+#   read_safeshareignore, load_tree, require_existing_path
+#   run_scan in main.j2            — is_dir / is_file (not fs.exists)
 #
 # Does not need filesystem capability (pure):
 #   parse_ignore_rules, path_ignored, merge_ignore_rules
@@ -25,6 +25,39 @@ import "ignore.j2"
 # Never pass --allow-net. SafeShare is local-only.
 
 MAX_TEXT_BYTES = DEFAULT_MAX_TEXT_BYTES
+
+# Native 0.1.0: fs.exists on a directory can raise even when --allow-fs is set.
+# The walk already uses is_dir / is_file; use those to prove the scan root.
+func resolve_scan_root(p) = {
+    s = usable_fs_path(p)
+    if s != "." {
+        give s
+    }
+    cwd = proc.cwd()
+    if cwd == "" {
+        give "."
+    }
+    give cwd
+}
+
+func require_existing_path(p) = {
+    root = resolve_scan_root(p)
+    ok := false
+    try {
+        ok = fs.is_dir(root)
+        if not ok {
+            ok = fs.is_file(root)
+        }
+    } else RuntimeError {
+        print(fmt("cannot access path: {}", root))
+        proc.exit(2)
+    }
+    if not ok {
+        print(fmt("path not found: {}", root))
+        proc.exit(2)
+    }
+    give root
+}
 
 func read_safeshareignore(root) = {
     path := join_path(root, ".safeshareignore")

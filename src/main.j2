@@ -36,16 +36,7 @@ func run_safeshare() = {
 }
 
 func run_scan(root, max_bytes, extra_excludes, ai_share, json_out) = {
-    try {
-        if not fs.exists(root) {
-            print(fmt("path not found: {}", root))
-            proc.exit(2)
-        }
-    } else RuntimeError {
-        print(fmt("cannot access path: {}", root))
-        proc.exit(2)
-    }
-
+    root = require_existing_path(root)
     loaded = load_tree(root, max_bytes, extra_excludes)
     result = complete_scan(loaded)
     print_scan_result(result, root, ai_share)

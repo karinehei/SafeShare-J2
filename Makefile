@@ -117,8 +117,9 @@ smoke: $(BIN)
 	json1="$$tmp/demo-report-1.json"; \
 	json2="$$tmp/demo-report-2.json"; \
 	log="$$tmp/demo-scan.txt"; \
-	$(NATIVE) scan ./demo-project --json "$$json1" | tee "$$log"; \
-	$(NATIVE) scan ./demo-project --json "$$json2" > /dev/null; \
+	test -d demo-project; \
+	$(NATIVE) scan demo-project --json "$$json1" | tee "$$log"; \
+	$(NATIVE) scan demo-project --json "$$json2" > /dev/null; \
 	cmp -s "$$json1" "$$json2"; \
 	python3 scripts/ci/verify-demo-smoke.py "$$json1" "$$log"; \
 	rm -rf "$$tmp"

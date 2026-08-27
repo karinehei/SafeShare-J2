@@ -98,9 +98,11 @@ jobs:
           json1="${RUNNER_TEMP}/demo-report-1.json"
           json2="${RUNNER_TEMP}/demo-report-2.json"
           log="${RUNNER_TEMP}/demo-scan.txt"
+          demo="demo-project"
+          test -d "$demo"
 
-          ./safeshare --allow-fs scan ./demo-project --json "$json1" | tee "$log"
-          ./safeshare --allow-fs scan ./demo-project --json "$json2" > /dev/null
+          ./safeshare --allow-fs scan "$demo" --json "$json1" | tee "$log"
+          ./safeshare --allow-fs scan "$demo" --json "$json2" > /dev/null
 
           cmp -s "$json1" "$json2"
           python3 scripts/ci/verify-demo-smoke.py "$json1" "$log"
