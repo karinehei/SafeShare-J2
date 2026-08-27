@@ -82,17 +82,18 @@ jobs:
           fi
           test -f ./safeshare
           test -x ./safeshare
-          # Capability grant is a J2 runtime flag. Native binaries may still
-          # require it; SafeShare strips --allow-fs from scan argv (see README).
-          # Missing operands print usage and exit 2 — that still proves it runs.
+          # Capability flags are parsed by `j2`, not by a j2-build binary.
+          # --help does not touch fs; missing operands still print usage (exit 2).
           set +e
           ./safeshare --allow-fs --help > "${RUNNER_TEMP}/safeshare-help.txt" 2>&1
           set -e
           grep -q "SafeShare J2" "${RUNNER_TEMP}/safeshare-help.txt"
 
       - name: Demo-project smoke test
-        # Synthetic fixture only. JSON is the deterministic artifact; no colors.
-        # --allow-fs is required; --allow-net is never passed.
+        # Native engine via j2 so --allow-fs is actually granted (J2 0.1.0).
+        # --allow-net is never passed. JSON is the deterministic artifact.
+        env:
+          J2_FORCE_NATIVE: "1"
         run: |
           set -euo pipefail
           json1="${RUNNER_TEMP}/demo-report-1.json"
@@ -101,8 +102,8 @@ jobs:
           demo="demo-project"
           test -d "$demo"
 
-          ./safeshare --allow-fs scan "$demo" --json "$json1" | tee "$log"
-          ./safeshare --allow-fs scan "$demo" --json "$json2" > /dev/null
+          j2 run --allow-fs src/main.j2 scan "$demo" --json "$json1" | tee "$log"
+          j2 run --allow-fs src/main.j2 scan "$demo" --json "$json2" > /dev/null
 
           cmp -s "$json1" "$json2"
           python3 scripts/ci/verify-demo-smoke.py "$json1" "$log"
@@ -110,8 +111,10 @@ jobs:
       - name: Self-scan repository
         # Catch accidental real credentials in product sources.
         # Intentional fixtures are listed in .safeshareignore — not by weakening rules.
+        env:
+          J2_FORCE_NATIVE: "1"
         run: |
           set -euo pipefail
           json="${RUNNER_TEMP}/self-scan.json"
-          ./safeshare --allow-fs scan . --ai-share --json "$json" | tee "${RUNNER_TEMP}/self-scan.txt"
+          j2 run --allow-fs src/main.j2 scan . --ai-share --json "$json" | tee "${RUNNER_TEMP}/self-scan.txt"
           python3 scripts/ci/verify-self-scan.py "$json"

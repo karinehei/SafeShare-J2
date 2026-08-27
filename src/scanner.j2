@@ -50,6 +50,7 @@ func require_existing_path(p) = {
         }
     } else RuntimeError {
         print(fmt("cannot access path: {}", root))
+        print("filesystem capability denied or I/O error; grant --allow-fs on j2 (j2 run --allow-fs …)")
         proc.exit(2)
     }
     if not ok {

@@ -72,9 +72,10 @@ jobs:
         env:
           TRIALS: ${{ github.event.inputs.trials }}
           WARMUP: ${{ github.event.inputs.warmup }}
+          J2_FORCE_NATIVE: "1"
         run: |
           set -euo pipefail
-          ./safeshare --allow-fs benchmark "$CORPUS" \
+          j2 run --allow-fs src/main.j2 benchmark "$CORPUS" \
             --trials "$TRIALS" --warmup "$WARMUP" \
             --json "${RUNNER_TEMP}/benchmark-native.json"
 

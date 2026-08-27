@@ -13,9 +13,10 @@ REPEAT  ?= 1
 TRIALS  ?= 5
 WARMUP  ?= 1
 
-# Interpreter entry. --allow-fs is a j2 runtime flag, not a SafeShare argument.
+# Interpreter entry. --allow-fs is a j2 flag (before the .j2 file), not SafeShare argv.
 RUN := $(J2) run --allow-fs $(MAIN)
-NATIVE := ./$(BIN) --allow-fs
+# Native engine with the same grant. A j2-build binary does not enable fs from argv on 0.1.0.
+NATIVE_RUN := J2_FORCE_NATIVE=1 $(J2) run --allow-fs $(MAIN)
 
 SRC_J2 := $(shell find src -name '*.j2' | LC_ALL=C sort)
 ALL_J2 := $(shell find . -name '*.j2' ! -path './.git/*' ! -path './tests/lib/*' | LC_ALL=C sort)
@@ -39,9 +40,9 @@ help:
 	@echo "  make corpus             generate synthetic CORPUS (default $(CORPUS))"
 	@echo "  make evaluate           score CORPUS against SAFESHARE_GROUND_TRUTH.json"
 	@echo "  make benchmark          time CORPUS (interpreter; TRIALS / WARMUP)"
-	@echo "  make benchmark-native   time CORPUS with ./$(BIN)"
-	@echo "  make smoke              native demo-project smoke (same checks as CI)"
-	@echo "  make self-scan          native scan of this repo"
+	@echo "  make benchmark-native   time CORPUS with J2_FORCE_NATIVE=1"
+	@echo "  make smoke              native-engine demo-project smoke (same checks as CI)"
+	@echo "  make self-scan          native-engine scan of this repo"
 	@echo "  make clean              remove binary, generated corpus, sanitize output"
 	@echo ""
 	@echo "Variables: SCAN OUTPUT CORPUS REPEAT TRIALS WARMUP JSON J2"
@@ -109,7 +110,7 @@ benchmark:
 
 benchmark-native: $(BIN)
 	@test -d "$(CORPUS)" || { echo "missing $(CORPUS) — run: make corpus"; exit 1; }
-	$(NATIVE) benchmark $(CORPUS) --trials $(TRIALS) --warmup $(WARMUP) $(if $(JSON),--json $(JSON),)
+	$(NATIVE_RUN) benchmark $(CORPUS) --trials $(TRIALS) --warmup $(WARMUP) $(if $(JSON),--json $(JSON),)
 
 smoke: $(BIN)
 	@set -euo pipefail; \
@@ -118,8 +119,8 @@ smoke: $(BIN)
 	json2="$$tmp/demo-report-2.json"; \
 	log="$$tmp/demo-scan.txt"; \
 	test -d demo-project; \
-	$(NATIVE) scan demo-project --json "$$json1" | tee "$$log"; \
-	$(NATIVE) scan demo-project --json "$$json2" > /dev/null; \
+	$(NATIVE_RUN) scan demo-project --json "$$json1" | tee "$$log"; \
+	$(NATIVE_RUN) scan demo-project --json "$$json2" > /dev/null; \
 	cmp -s "$$json1" "$$json2"; \
 	python3 scripts/ci/verify-demo-smoke.py "$$json1" "$$log"; \
 	rm -rf "$$tmp"
@@ -128,7 +129,7 @@ self-scan: $(BIN)
 	@set -euo pipefail; \
 	tmp=$$(mktemp -d -t safeshare-self.XXXXXX); \
 	json="$$tmp/self-scan.json"; \
-	$(NATIVE) scan . --ai-share --json "$$json" | tee "$$tmp/self-scan.txt"; \
+	$(NATIVE_RUN) scan . --ai-share --json "$$json" | tee "$$tmp/self-scan.txt"; \
 	python3 scripts/ci/verify-self-scan.py "$$json"; \
 	rm -rf "$$tmp"
 
