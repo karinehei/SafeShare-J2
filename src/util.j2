@@ -95,10 +95,11 @@ func usable_fs_path(p) = {
         give "."
     }
     if text.starts_with(s, "./") {
-        s = slice(s, 2, len(s))
-        if s == "" {
+        rest = slice(s, 2, len(s))
+        if rest == "" {
             give "."
         }
+        give rest
     }
     give s
 }
