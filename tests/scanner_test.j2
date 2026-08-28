@@ -100,6 +100,7 @@ assert_eq(bare.path, "./proj")
 
 missing = parse_command(["safeshare.j2"])
 assert_eq(missing.ok, false)
+assert_eq(contains(missing.message, "j2 --allow-fs"), true)
 
 granted = parse_command(["safeshare.j2", "--allow-fs", "scan", "./proj"])
 assert_eq(granted.ok, true)

@@ -7,7 +7,7 @@ This tree is a **two-minute SafeShare fixture**, not a product.
 - Run SafeShare first:
 
 ```
-j2 run --allow-fs src/main.j2 scan ./demo-project --ai-share
+j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
 ```
 
 Expected story: one AWS-shaped key in `.env`, a fake session JWT in source, sloppy local TLS/CORS in `src/config.ts`, and DEBUG left on in compose.

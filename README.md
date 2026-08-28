@@ -24,7 +24,7 @@ Findings never store a complete secret — only a length-preserving mask and a S
 
 That matches this problem:
 
-- SafeShare **must** read files. J2 withholds `fs` until `j2 run --allow-fs …`.
+- SafeShare **must** read files. J2 withholds `fs` until you pass `--allow-fs` on **`j2`** (`j2 --allow-fs src/main.j2 …`).
 - SafeShare **must not** talk to the network. Never pass `--allow-net`. A downloaded script cannot quietly exfiltrate a `.env`.
 - Detectors are pure functions of `(path, text)`. Native `j2 build` may split independent per-file analysis across cores without a thread API in this repo.
 - Judges (and you) can read every rule in `src/rules.j2`. Nothing is a black-box model.
@@ -46,7 +46,7 @@ J2 0.1.0’s public toolchain is **macOS on Apple Silicon**. This repo is the pr
 `demo-project/` is a two-minute fixture: five findings, not a wall of noise. Every credential is synthetic.
 
 ```sh
-j2 run --allow-fs src/main.j2 scan ./demo-project --ai-share
+j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
 ```
 
 | Severity | File | What it is showing |
@@ -68,7 +68,15 @@ j2 --version
 # j2 0.1.0
 ```
 
-2. Clone this repository. J2 has no package manager; `import` splices source files into one program.
+2. Clone this repository and work from its root. J2 has no package manager; `import` splices source files into one program.
+
+First scan (more commands in [How to use](#how-to-use)):
+
+```sh
+j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
+```
+
+Test suite:
 
 ```sh
 make test
@@ -76,6 +84,74 @@ make test
 ```
 
 Each `tests/*_test.j2` is a program of `assert_eq` checks, run with `j2 run` (interpreter). J2 0.1.0’s `j2 test` reports `FAIL file.j2 ()` with no diagnostic on this tree, so CI does not use it. Imports resolve through `tests/lib` → `src` (and `J2_PATH=src`): J2 looks next to the file, then that file’s `lib/`, then `J2_PATH` — not `../src`. Tests are pure: they do not call `fs` and do not need `--allow-fs`. Do not run `src/main.j2` under the test runner — that file **is** the CLI and runs at load.
+
+## How to use
+
+Commands assume the repository root, **J2 0.1.0**, and macOS Apple Silicon. `--allow-fs` is a flag on **`j2`**, before `src/main.j2` — not an argument to SafeShare. `j2 run --allow-fs src/main.j2 …` is the same grant. Never pass `--allow-net`.
+
+### Scan
+
+A bare path defaults to `scan`.
+
+```sh
+j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
+j2 --allow-fs src/main.j2 scan ./your-project
+j2 --allow-fs src/main.j2 ./your-project
+```
+
+Make shortcuts (same interpreter grant):
+
+```sh
+make scan
+make scan SCAN=./your-project
+make scan SCAN=./your-project JSON=safeshare-report.json
+make help
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--ai-share` | Highlight paths people commonly paste into assistants |
+| `--json FILE` | Write a JSON report (maps, then `json.stringify_pretty`) |
+| `--max-bytes N` | Per-file text cap (default 1 MB) |
+| `--exclude PATTERN` | Extra ignore glob; repeatable |
+
+Without `--allow-fs`, the runtime will not read files (`j2 src/main.j2 scan ./demo-project`).
+
+### Sanitize
+
+`DEST` must be a sibling or absolute folder **outside** the source tree (not `.`, `..`, or inside `PATH`).
+
+```sh
+j2 --allow-fs src/main.j2 sanitize ./demo-project --output ./demo-project-safe
+make sanitize
+make sanitize SCAN=./your-project OUTPUT=./your-project-safe
+```
+
+Only AWS key ids, GitHub tokens, PEM private-key blocks, and database URLs with userinfo are replaced. Heuristic hits are copied through on purpose. The copy is not “safe to share.”
+
+### Corpus, evaluate, benchmark
+
+Synthetic kit only. Do not treat F1 as production accuracy.
+
+```sh
+j2 --allow-fs src/main.j2 generate-corpus ./benchmark-corpus
+j2 --allow-fs src/main.j2 evaluate ./benchmark-corpus
+j2 --allow-fs src/main.j2 benchmark ./benchmark-corpus
+```
+
+`evaluate` is also accepted as `score`. `--trials`, `--warmup`, and `--json FILE` apply to `benchmark`. See [Benchmark](#benchmark).
+
+### Native compile
+
+```sh
+j2 build src/main.j2 -o safeshare
+./safeshare --help
+make build
+```
+
+`j2 build` proves the source compiles. The binary stays deny-by-default: `--help` works; `./safeshare scan PATH` cannot read files. Scan with the interpreter (`j2 --allow-fs src/main.j2 scan PATH`). Do not set `J2_FORCE_NATIVE=1` on 0.1.0 — it drops SafeShare argv (prints usage, exit 2). SafeShare still strips leftover capability flags from `proc.argv()` so they are not taken as the scan root.
+
+`make smoke` and `make self-scan` compile first, then scan through `j2 --allow-fs`, matching CI.
 
 ## CI
 
@@ -88,36 +164,6 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-26** (hosted Apple S
 5. Self-scans the repo the same way (`scan . --ai-share`). Known synthetic trees are listed in `.safeshareignore` (`demo-project/`, `tests/`, …), not by weakening detectors.
 
 Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a separate manual workflow (`.github/workflows/benchmark.yml`); they are not a required PR check. GitHub-hosted timings are noisy and should not be quoted as product performance.
-
-## Usage
-
-`--allow-fs` is a flag on **`j2`**, not an argument to SafeShare. Put it before the program file. A bare path defaults to `scan`.
-
-```sh
-# denied — runtime will not read files
-j2 run src/main.j2 ./demo-project
-
-# scan
-j2 --allow-fs src/main.j2 ./demo-project
-j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
-j2 --allow-fs src/main.j2 scan ./demo-project --json safeshare-report.json
-j2 --allow-fs src/main.j2 scan ./demo-project --max-bytes 500000 --exclude "*.min.js"
-
-# sanitize: DEST must be a sibling or absolute path outside PATH
-j2 --allow-fs src/main.j2 sanitize ./demo-project --output ./demo-project-safe
-
-# corpus (synthetic; do not treat F1 as production accuracy)
-j2 --allow-fs src/main.j2 generate-corpus ./benchmark-corpus
-j2 --allow-fs src/main.j2 evaluate ./benchmark-corpus
-j2 --allow-fs src/main.j2 benchmark ./benchmark-corpus
-
-# native compile (filesystem grant still belongs on j2, not on ./safeshare)
-j2 build src/main.j2 -o safeshare
-```
-
-`--allow-fs` goes on **`j2`**, before the `.j2` file (`j2 --allow-fs src/main.j2 scan PATH`). `j2 run --allow-fs …` is the same grant. A file from `j2 build` stays deny-by-default. `J2_FORCE_NATIVE=1` on 0.1.0 does not forward SafeShare argv (it prints usage and exits 2). SafeShare still strips leftover capability flags from `proc.argv()` so they are not taken as the scan root.
-
-`evaluate` is also accepted as `score`.
 
 ## Detection rules
 
@@ -280,7 +326,7 @@ Default: 1 untimed warmup, then 5 timed trials; headline elapsed is the **median
 - **Symlinks.** J2 0.1.0 has no `lstat` / `realpath`. Containment is a string prefix. Directory links can leave the intended tree; cycles can hang the walk. `--allow-fs` applies to the whole process.
 - **Binary / Unicode.** Skip is extension list + NUL. Office files and UTF-16 without NUL may be scanned as text. Invalid UTF-8 is skipped if `read_file` fails.
 - **Ignore language** is a subset, not gitignore.
-- **Runtime.** Public J2 0.1.0 is macOS Apple Silicon. `--allow-fs` is not a path jail.
+- **Runtime.** Public J2 0.1.0 is macOS Apple Silicon. `--allow-fs` is not a path jail. Scan with `j2 --allow-fs src/main.j2 …`; a `j2 build` binary does not inherit that grant.
 
 ## Roadmap
 

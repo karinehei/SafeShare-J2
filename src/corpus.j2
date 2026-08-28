@@ -48,7 +48,7 @@ func corpus_file(path, content, needles) = {
 
 func kit_readme() = {
     path = "README.md"
-    content = "# SafeShare synthetic corpus\n\nAll credentials in this tree are **intentionally fake** and unusable\n(AWS documentation examples, sequential dummy tokens, unsigned `alg=none`\nJWTs, loopback database URLs). Do not paste them into a real service.\n\nGround truth: `SAFESHARE_GROUND_TRUTH.json` (ignored by the scanner).\nRecords are `{file, line, rule_id}` only.\n\n```\nj2 run --allow-fs src/main.j2 evaluate .\nj2 run --allow-fs src/main.j2 benchmark .\n```\n"
+    content = "# SafeShare synthetic corpus\n\nAll credentials in this tree are **intentionally fake** and unusable\n(AWS documentation examples, sequential dummy tokens, unsigned `alg=none`\nJWTs, loopback database URLs). Do not paste them into a real service.\n\nGround truth: `SAFESHARE_GROUND_TRUTH.json` (ignored by the scanner).\nRecords are `{file, line, rule_id}` only.\n\n```\nj2 --allow-fs src/main.j2 evaluate .\nj2 --allow-fs src/main.j2 benchmark .\n```\n"
     give corpus_file(path, content, [])
 }
 

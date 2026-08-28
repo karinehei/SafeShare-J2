@@ -11,7 +11,7 @@ import "ignore.j2"
 # documented parallelizer idiom — do not advertise it as auto-parallel.
 # Do not add a thread API or parallel fs.
 #
-# Requires --allow-fs (j2 run --allow-fs ...):
+# Requires --allow-fs on j2 (j2 --allow-fs src/main.j2 …):
 #   discover_files, collect_files  — fs.is_file, fs.is_dir, fs.list_dir
 #   try_load_text, load_text_files — fs.metadata, fs.read_file
 #   read_safeshareignore, load_tree, require_existing_path
@@ -50,7 +50,7 @@ func require_existing_path(p) = {
         }
     } else RuntimeError {
         print(fmt("cannot access path: {}", root))
-        print("filesystem capability denied or I/O error; grant --allow-fs on j2 (j2 run --allow-fs …)")
+        print("filesystem capability denied or I/O error; grant --allow-fs on j2 (j2 --allow-fs src/main.j2 scan PATH)")
         proc.exit(2)
     }
     if not ok {
