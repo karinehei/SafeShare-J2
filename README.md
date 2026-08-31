@@ -87,7 +87,7 @@ Each `tests/*_test.j2` is a program of `assert_eq` checks, run with `j2 run` (in
 
 ## How to use
 
-Commands assume the repository root, **J2 0.1.0**, and macOS Apple Silicon. `--allow-fs` is a flag on **`j2`**, before `src/main.j2` — not an argument to SafeShare. `j2 run --allow-fs src/main.j2 …` is the same grant. Never pass `--allow-net`.
+Commands assume the repository root, **J2 0.1.0**, and macOS Apple Silicon. `--allow-fs` is a flag on **`j2`**, before `src/main.j2` — not an argument to SafeShare. Use `j2 --allow-fs src/main.j2 …` so SafeShare receives its command and path. `j2 run` is for the test files; on 0.1.0 it can drop SafeShare operands (prints usage, exit 2). Never pass `--allow-net`.
 
 ### Scan
 

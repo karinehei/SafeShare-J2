@@ -29,7 +29,6 @@ help:
 	@echo "SafeShare J2"
 	@echo ""
 	@echo "Scan with j2 --allow-fs src/main.j2 …  (never --allow-net)."
-	@echo "j2 run --allow-fs src/main.j2 … is the same grant."
 	@echo ""
 	@echo "  make check              fmt-check, tests, native build, demo smoke, self-scan"
 	@echo "  make test               interpreter j2 run of tests/*_test.j2 (pure; no --allow-fs)"

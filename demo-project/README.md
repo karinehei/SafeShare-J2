@@ -12,7 +12,7 @@ From the repository root (J2 0.1.0, macOS Apple Silicon):
 j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
 ```
 
-`j2 run --allow-fs src/main.j2 scan ./demo-project --ai-share` is the same grant. `make scan` from the repo root does this too.
+`make scan` from the repo root does this too.
 
 You should see **five findings**, not a wall of noise:
 

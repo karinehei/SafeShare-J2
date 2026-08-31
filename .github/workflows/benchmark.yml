@@ -47,21 +47,23 @@ jobs:
 
       - name: Generate synthetic corpus
         env:
-          REPEAT: ${{ github.event.inputs.repeat }}
+          REPEAT: ${{ inputs.repeat }}
         run: |
           set -euo pipefail
           corpus="${RUNNER_TEMP}/benchmark-corpus"
-          j2 run --allow-fs src/main.j2 generate-corpus "$corpus" --repeat "$REPEAT"
+          # Bare `j2 --allow-fs FILE args` forwards argv. `j2 run FILE extra`
+          # on 0.1.0 has dropped SafeShare operands (usage, exit 2).
+          j2 --allow-fs src/main.j2 generate-corpus "$corpus" --repeat "$REPEAT"
           echo "CORPUS=$corpus" >> "$GITHUB_ENV"
           echo "WARNING: GitHub-hosted results are not lab-grade timings."
 
       - name: Interpreter benchmark
         env:
-          TRIALS: ${{ github.event.inputs.trials }}
-          WARMUP: ${{ github.event.inputs.warmup }}
+          TRIALS: ${{ inputs.trials }}
+          WARMUP: ${{ inputs.warmup }}
         run: |
           set -euo pipefail
-          j2 run --allow-fs src/main.j2 benchmark "$CORPUS" \
+          j2 --allow-fs src/main.j2 benchmark "$CORPUS" \
             --trials "$TRIALS" --warmup "$WARMUP" \
             --json "${RUNNER_TEMP}/benchmark-interpreter.json"
 
@@ -70,12 +72,13 @@ jobs:
 
       - name: Native benchmark
         env:
-          TRIALS: ${{ github.event.inputs.trials }}
-          WARMUP: ${{ github.event.inputs.warmup }}
+          TRIALS: ${{ inputs.trials }}
+          WARMUP: ${{ inputs.warmup }}
         run: |
           set -euo pipefail
-          # J2_FORCE_NATIVE=1 drops argv on 0.1.0. Time the native-compiled
-          # analyze path by running through j2 after j2 build has warmed the cache.
+          # `j2 run` is not used: 0.1.0 can drop program argv (usage, exit 2).
+          # Time the native-compiled analyze path by running through j2 after
+          # j2 build has warmed the cache. Do not set J2_FORCE_NATIVE=1.
           j2 --allow-fs src/main.j2 benchmark "$CORPUS" \
             --trials "$TRIALS" --warmup "$WARMUP" \
             --json "${RUNNER_TEMP}/benchmark-native.json"
