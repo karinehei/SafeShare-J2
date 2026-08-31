@@ -1,0 +1,260 @@
+# Manual, interactive-style SafeShare test on hosted Apple Silicon.
+# Complements CI; does not replace .github/workflows/ci.yml.
+# J2 0.1.0 is aarch64-darwin only. Pin macos-26. Never pass --allow-net.
+
+name: Manual SafeShare Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: SafeShare target to scan (repository-relative path)
+        required: true
+        default: demo-project
+        type: string
+      ai_share:
+        description: Enable --ai-share mode
+        type: boolean
+        default: true
+      run_sanitize:
+        description: Also test sanitize
+        type: boolean
+        default: true
+      run_benchmark:
+        description: Run synthetic benchmark
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  manual-test:
+    name: Scan, sanitize, optional benchmark
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_INPUT: ${{ inputs.target }}
+      AI_SHARE: ${{ inputs.ai_share }}
+      RUN_SANITIZE: ${{ inputs.run_sanitize }}
+      RUN_BENCHMARK: ${{ inputs.run_benchmark }}
+      ARTIFACT_NAME: safeshare-manual-test-${{ github.run_number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare output directory
+        run: |
+          set -euo pipefail
+          output_dir="${RUNNER_TEMP}/safeshare-manual-test"
+          mkdir -p "$output_dir"
+          echo "OUTPUT_DIR=$output_dir" >> "$GITHUB_ENV"
+
+      - name: Validate target path
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import sys
+
+          raw = os.environ.get("TARGET_INPUT", "")
+          if "\n" in raw or "\r" in raw or "\0" in raw:
+              print("target must not contain control characters", file=sys.stderr)
+              sys.exit(1)
+
+          raw = raw.strip()
+          if raw == "":
+              print("target must be a non-empty repository-relative path", file=sys.stderr)
+              sys.exit(1)
+          if raw.startswith("/") or raw.startswith("\\") or raw.startswith("~"):
+              print("target must be repository-relative, not an absolute path", file=sys.stderr)
+              sys.exit(1)
+          if len(raw) >= 2 and raw[1] == ":":
+              print("target must be repository-relative, not an absolute path", file=sys.stderr)
+              sys.exit(1)
+          if ".." in raw:
+              print("target must not contain ..", file=sys.stderr)
+              sys.exit(1)
+          if raw.startswith("-"):
+              print("target must be a repository-relative path, not a flag", file=sys.stderr)
+              sys.exit(1)
+          allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/")
+          if any(ch not in allowed for ch in raw):
+              print("target may contain only letters, digits, and ./_- (repository-relative)", file=sys.stderr)
+              sys.exit(1)
+
+          ws = os.environ.get("GITHUB_WORKSPACE", "")
+          if ws == "":
+              print("GITHUB_WORKSPACE is not set", file=sys.stderr)
+              sys.exit(1)
+
+          ws_real = os.path.realpath(ws)
+          resolved = os.path.realpath(os.path.join(ws_real, raw))
+          sep = os.sep
+          if resolved != ws_real and not resolved.startswith(ws_real + sep):
+              print("target must stay inside the checked-out repository", file=sys.stderr)
+              sys.exit(1)
+          if not os.path.exists(resolved):
+              print("target does not exist in the repository:", raw, file=sys.stderr)
+              sys.exit(1)
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write("TARGET=" + raw + "\n")
+          PY
+
+      - name: Install J2 0.1.0
+        id: install_j2
+        run: |
+          chmod +x scripts/ci/install-j2.sh
+          ./scripts/ci/install-j2.sh
+
+      - name: Verify j2 --version
+        id: verify_j2
+        run: |
+          set -euo pipefail
+          j2 --version
+          j2 --version | grep -q "0.1.0"
+          {
+            echo "J2_VERSION=$(j2 --version | head -n 1)"
+          } >> "$GITHUB_ENV"
+
+      - name: Run SafeShare scan
+        run: |
+          set -euo pipefail
+          test -n "${TARGET:-}"
+          test -d "$OUTPUT_DIR"
+
+          cmd=(j2 --allow-fs src/main.j2 scan "$TARGET" --json "$OUTPUT_DIR/report.json")
+          if [ "$AI_SHARE" = "true" ]; then
+            cmd+=(--ai-share)
+          fi
+          "${cmd[@]}" | tee "$OUTPUT_DIR/scan.txt"
+
+      - name: Determinism check
+        run: |
+          set -euo pipefail
+          cmd=(j2 --allow-fs src/main.j2 scan "$TARGET" --json "$OUTPUT_DIR/report-second.json")
+          if [ "$AI_SHARE" = "true" ]; then
+            cmd+=(--ai-share)
+          fi
+          "${cmd[@]}" > /dev/null
+
+          if ! cmp -s "$OUTPUT_DIR/report.json" "$OUTPUT_DIR/report-second.json"; then
+            echo "determinism: report.json and report-second.json differ" >&2
+            cmp "$OUTPUT_DIR/report.json" "$OUTPUT_DIR/report-second.json" || true
+            exit 1
+          fi
+
+      - name: Demo-project smoke verification
+        run: |
+          set -euo pipefail
+          if [ "$TARGET" != "demo-project" ]; then
+            echo "Skipping demo-project fixture assertions (target is not exactly demo-project)."
+            exit 0
+          fi
+          python3 scripts/ci/verify-demo-smoke.py "$OUTPUT_DIR/report.json" "$OUTPUT_DIR/scan.txt"
+
+      - name: Sanitize test
+        if: ${{ inputs.run_sanitize }}
+        run: |
+          set -euo pipefail
+          sanitized_dir="${RUNNER_TEMP}/safeshare-sanitized"
+          echo "SANITIZED_DIR=$sanitized_dir" >> "$GITHUB_ENV"
+
+          if [ ! -e "$TARGET" ]; then
+            echo "sanitize: target is missing or unusable: repository-relative path was rejected or removed" >&2
+            exit 1
+          fi
+
+          j2 --allow-fs src/main.j2 sanitize "$TARGET" --output "$sanitized_dir" \
+            | tee "$OUTPUT_DIR/sanitize.txt"
+
+          if [ ! -d "$sanitized_dir" ]; then
+            echo "sanitize: expected an output directory under RUNNER_TEMP, but it was not created." >&2
+            echo "Sanitize copies a tree or file to a destination outside the source; this target may be unsupported." >&2
+            exit 1
+          fi
+
+          cmd=(j2 --allow-fs src/main.j2 scan "$sanitized_dir" --json "$OUTPUT_DIR/sanitize-report.json")
+          if [ "$AI_SHARE" = "true" ]; then
+            cmd+=(--ai-share)
+          fi
+          "${cmd[@]}" | tee "$OUTPUT_DIR/sanitize-rescan.txt"
+          echo "Sanitize redacts only selected high-confidence patterns; remaining findings are expected."
+
+      - name: Synthetic benchmark
+        if: ${{ inputs.run_benchmark }}
+        run: |
+          set -euo pipefail
+          corpus="${RUNNER_TEMP}/safeshare-benchmark-corpus"
+          echo "WARNING: GitHub-hosted timings are not product performance numbers."
+
+          j2 --allow-fs src/main.j2 generate-corpus "$corpus"
+          j2 --allow-fs src/main.j2 evaluate "$corpus" | tee "$OUTPUT_DIR/evaluate.txt"
+          j2 --allow-fs src/main.j2 benchmark "$corpus" --json "$OUTPUT_DIR/benchmark.json" \
+            | tee "$OUTPUT_DIR/benchmark.txt"
+
+      - name: Native compilation smoke test
+        if: ${{ !cancelled() && steps.verify_j2.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          j2 build src/main.j2 -o "${RUNNER_TEMP}/safeshare"
+          test -x "${RUNNER_TEMP}/safeshare"
+          # Capability flags are parsed by `j2`, not by a j2-build binary.
+          # --help does not touch fs; usage may still exit 2.
+          set +e
+          "${RUNNER_TEMP}/safeshare" --help > "${RUNNER_TEMP}/safeshare-help.txt" 2>&1
+          set -e
+          grep -q "SafeShare J2" "${RUNNER_TEMP}/safeshare-help.txt"
+
+      - name: Job summary
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          sanitize_ran="no"
+          if [ "${RUN_SANITIZE:-}" = "true" ] && { [ -f "${OUTPUT_DIR:-}/sanitize-rescan.txt" ] || [ -f "${OUTPUT_DIR:-}/sanitize-report.json" ]; }; then
+            sanitize_ran="yes"
+          elif [ "${RUN_SANITIZE:-}" = "true" ]; then
+            sanitize_ran="requested (did not complete)"
+          fi
+
+          benchmark_ran="no"
+          if [ "${RUN_BENCHMARK:-}" = "true" ] && [ -f "${OUTPUT_DIR:-}/benchmark.json" ]; then
+            benchmark_ran="yes"
+          elif [ "${RUN_BENCHMARK:-}" = "true" ]; then
+            benchmark_ran="requested (did not complete)"
+          fi
+
+          ai_share_enabled="no"
+          if [ "${AI_SHARE:-}" = "true" ]; then
+            ai_share_enabled="yes"
+          fi
+
+          {
+            echo "## Manual SafeShare Test"
+            echo
+            echo "- **J2 version:** ${J2_VERSION:-unknown}"
+            echo "- **Target scanned:** \`${TARGET:-unset}\`"
+            echo "- **--ai-share:** ${ai_share_enabled}"
+            echo "- **Sanitize:** ${sanitize_ran}"
+            echo "- **Benchmark:** ${benchmark_ran}"
+            echo "- **Artifact:** \`${ARTIFACT_NAME}\`"
+            echo
+            echo "SafeShare findings are heuristic and an empty result is not a guarantee that a tree is safe to share."
+            echo
+            echo "GitHub-hosted benchmark numbers should not be treated as product performance."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: safeshare-manual-test-${{ github.run_number }}
+          path: ${{ runner.temp }}/safeshare-manual-test
+          if-no-files-found: warn

@@ -163,7 +163,19 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-26** (hosted Apple S
 4. Compiles `j2 build src/main.j2 -o safeshare` (binary `--help`) and smokes `demo-project/` with `j2 --allow-fs src/main.j2 scan …` (JSON, five expected findings, no raw fixture secrets).
 5. Self-scans the repo the same way (`scan . --ai-share`). Known synthetic trees are listed in `.safeshareignore` (`demo-project/`, `tests/`, …), not by weakening detectors.
 
-Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a separate manual workflow (`.github/workflows/benchmark.yml`); they are not a required PR check. GitHub-hosted timings are noisy and should not be quoted as product performance.
+Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a separate manual workflow (`.github/workflows/benchmark.yml`); they are not a required PR check. GitHub-hosted timings are noisy and should not be quoted as product performance. Windows and Linux contributors can run an exploratory scan on hosted Apple Silicon; see [Testing without a Mac](#testing-without-a-mac).
+
+## Testing without a Mac
+
+J2 0.1.0 currently requires Apple Silicon macOS, so this tree cannot be run locally on Windows or Linux. Automatic CI already runs on every push and pull request (hosted `macos-26`). For exploratory or integration testing of a repository-relative path:
+
+1. Open the repository on GitHub → **Actions**
+2. Choose **Manual SafeShare Test**
+3. Click **Run workflow**
+4. Set the repository-relative target (default `demo-project`) and whether to enable `--ai-share`, sanitize, and the synthetic benchmark
+5. Download the `safeshare-manual-test-<run>` artifact when the job finishes
+
+The workflow installs J2 on GitHub-hosted Apple Silicon, scans with `j2 --allow-fs` (never `--allow-net`), checks that JSON reports are deterministic, and uploads logs/reports only. GitHub-hosted benchmark numbers should not be treated as product performance.
 
 ## Detection rules
 
