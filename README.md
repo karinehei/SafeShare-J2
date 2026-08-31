@@ -173,7 +173,7 @@ J2 0.1.0 currently requires Apple Silicon macOS, so this tree cannot be run loca
 2. Choose **Manual SafeShare Test**
 3. Click **Run workflow**
 4. Set the repository-relative target (default `demo-project`) and whether to enable `--ai-share`, sanitize, and the synthetic benchmark
-5. Download the `safeshare-manual-test-<run>` artifact when the job finishes
+5. Open the finished run — the Summary tab shows counts, check status, and rule-id tallies (not raw finding values). Download the `safeshare-manual-test-<run>` artifact for JSON reports and logs.
 
 The workflow installs J2 on GitHub-hosted Apple Silicon, scans with `j2 --allow-fs` (never `--allow-net`), checks that JSON reports are deterministic, and uploads logs/reports only. GitHub-hosted benchmark numbers should not be treated as product performance.
 

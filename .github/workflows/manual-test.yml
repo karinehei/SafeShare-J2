@@ -4,6 +4,8 @@
 
 name: Manual SafeShare Test
 
+run-name: "${{ inputs.target }}${{ inputs.ai_share && ' · ai-share' || '' }}${{ inputs.run_sanitize && ' · sanitize' || '' }}${{ inputs.run_benchmark && ' · benchmark' || '' }}"
+
 on:
   workflow_dispatch:
     inputs:
@@ -125,6 +127,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Run SafeShare scan
+        id: scan
         run: |
           set -euo pipefail
           test -n "${TARGET:-}"
@@ -137,6 +140,7 @@ jobs:
           "${cmd[@]}" | tee "$OUTPUT_DIR/scan.txt"
 
       - name: Determinism check
+        id: determinism
         run: |
           set -euo pipefail
           cmd=(j2 --allow-fs src/main.j2 scan "$TARGET" --json "$OUTPUT_DIR/report-second.json")
@@ -152,15 +156,14 @@ jobs:
           fi
 
       - name: Demo-project smoke verification
+        id: demo_smoke
+        if: ${{ env.TARGET == 'demo-project' }}
         run: |
           set -euo pipefail
-          if [ "$TARGET" != "demo-project" ]; then
-            echo "Skipping demo-project fixture assertions (target is not exactly demo-project)."
-            exit 0
-          fi
           python3 scripts/ci/verify-demo-smoke.py "$OUTPUT_DIR/report.json" "$OUTPUT_DIR/scan.txt"
 
       - name: Sanitize test
+        id: sanitize
         if: ${{ inputs.run_sanitize }}
         run: |
           set -euo pipefail
@@ -189,6 +192,7 @@ jobs:
           echo "Sanitize redacts only selected high-confidence patterns; remaining findings are expected."
 
       - name: Synthetic benchmark
+        id: benchmark
         if: ${{ inputs.run_benchmark }}
         run: |
           set -euo pipefail
@@ -196,11 +200,13 @@ jobs:
           echo "WARNING: GitHub-hosted timings are not product performance numbers."
 
           j2 --allow-fs src/main.j2 generate-corpus "$corpus"
-          j2 --allow-fs src/main.j2 evaluate "$corpus" | tee "$OUTPUT_DIR/evaluate.txt"
+          j2 --allow-fs src/main.j2 evaluate "$corpus" --json "$OUTPUT_DIR/evaluate.json" \
+            | tee "$OUTPUT_DIR/evaluate.txt"
           j2 --allow-fs src/main.j2 benchmark "$corpus" --json "$OUTPUT_DIR/benchmark.json" \
             | tee "$OUTPUT_DIR/benchmark.txt"
 
       - name: Native compilation smoke test
+        id: native_build
         if: ${{ !cancelled() && steps.verify_j2.outcome == 'success' }}
         run: |
           set -euo pipefail
@@ -215,41 +221,16 @@ jobs:
 
       - name: Job summary
         if: ${{ always() }}
+        env:
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+          DETERMINISM_OUTCOME: ${{ steps.determinism.outcome }}
+          DEMO_OUTCOME: ${{ steps.demo_smoke.outcome }}
+          SANITIZE_OUTCOME: ${{ steps.sanitize.outcome }}
+          BENCHMARK_OUTCOME: ${{ steps.benchmark.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native_build.outcome }}
         run: |
           set -euo pipefail
-          sanitize_ran="no"
-          if [ "${RUN_SANITIZE:-}" = "true" ] && { [ -f "${OUTPUT_DIR:-}/sanitize-rescan.txt" ] || [ -f "${OUTPUT_DIR:-}/sanitize-report.json" ]; }; then
-            sanitize_ran="yes"
-          elif [ "${RUN_SANITIZE:-}" = "true" ]; then
-            sanitize_ran="requested (did not complete)"
-          fi
-
-          benchmark_ran="no"
-          if [ "${RUN_BENCHMARK:-}" = "true" ] && [ -f "${OUTPUT_DIR:-}/benchmark.json" ]; then
-            benchmark_ran="yes"
-          elif [ "${RUN_BENCHMARK:-}" = "true" ]; then
-            benchmark_ran="requested (did not complete)"
-          fi
-
-          ai_share_enabled="no"
-          if [ "${AI_SHARE:-}" = "true" ]; then
-            ai_share_enabled="yes"
-          fi
-
-          {
-            echo "## Manual SafeShare Test"
-            echo
-            echo "- **J2 version:** ${J2_VERSION:-unknown}"
-            echo "- **Target scanned:** \`${TARGET:-unset}\`"
-            echo "- **--ai-share:** ${ai_share_enabled}"
-            echo "- **Sanitize:** ${sanitize_ran}"
-            echo "- **Benchmark:** ${benchmark_ran}"
-            echo "- **Artifact:** \`${ARTIFACT_NAME}\`"
-            echo
-            echo "SafeShare findings are heuristic and an empty result is not a guarantee that a tree is safe to share."
-            echo
-            echo "GitHub-hosted benchmark numbers should not be treated as product performance."
-          } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/write-manual-job-summary.py >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload artifacts
         if: ${{ always() }}
