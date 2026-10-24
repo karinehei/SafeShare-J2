@@ -184,16 +184,20 @@ pre:focus-visible,
 
 .meta {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.6rem 1rem;
   margin: 0.8rem 0;
 }
 
-.meta div { margin: 0; }
+.meta > div { margin: 0; min-width: 0; }
 
 .meta dt { font-size: 0.78rem; color: var(--muted); }
 
-.meta dd { margin: 0; font-weight: 650; }
+.meta dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+
+.site-footer .meta {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+}
 
 .fine { color: var(--muted); font-size: 0.92rem; }
 
