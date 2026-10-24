@@ -58,12 +58,25 @@ const MISSING = [
   "Copying that bundle does not mean J2 executed on this machine.",
 ].join("\n")
 
+export function jsonFromResponseBody(url: string, status: number, contentType: string, body: string): unknown {
+  if (status < 200 || status >= 300) {
+    throw new Error(`${url} returned HTTP ${status}`)
+  }
+  const trimmed = body.trimStart()
+  if (contentType.toLowerCase().includes("text/html") || trimmed.startsWith("<")) {
+    throw new Error(`${url} is not in the published bundle. The server returned an HTML page instead of JSON.`)
+  }
+  try {
+    return JSON.parse(body) as unknown
+  } catch {
+    throw new Error(`${url} is not valid JSON.`)
+  }
+}
+
 async function fetchJson(url: string, signal: AbortSignal | undefined) {
   const response = await fetch(url, { signal })
-  if (!response.ok) {
-    throw new Error(`${url} returned HTTP ${response.status}`)
-  }
-  return response.json()
+  const body = await response.text()
+  return jsonFromResponseBody(url, response.status, response.headers.get("content-type") ?? "", body)
 }
 
 export async function loadPublishedBundle(signal?: AbortSignal): Promise<LoadedBundle> {
