@@ -57,7 +57,40 @@ pre:focus-visible,
   padding: 1.25rem 1.25rem 1.5rem;
 }
 
-.site-header h1 { margin: 0.15rem 0 0.6rem; font-size: 1.8rem; }
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0.15rem 0 0.7rem;
+}
+
+.site-header h1 { margin: 0; font-size: 1.8rem; }
+
+.mark {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+.mark-check {
+  stroke: #fbbf24;
+  stroke-linecap: round;
+}
+
+.icon {
+  width: 1.05em;
+  height: 1.05em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .kicker {
   margin: 0;
@@ -90,6 +123,9 @@ pre:focus-visible,
 }
 
 .site-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   color: #f8fafc;
   text-decoration: none;
   padding: 0.35rem 0.7rem;
@@ -122,7 +158,9 @@ pre:focus-visible,
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
 
 .button, button, .actions a.button {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   background: var(--blue);
   color: white;
   text-decoration: none;
@@ -217,7 +255,14 @@ select {
   box-shadow: inset 3px 0 0 var(--blue);
 }
 
-.file-path { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.86rem; }
+.file-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.86rem;
+}
 
 .file-count { color: var(--muted); font-size: 0.82rem; }
 

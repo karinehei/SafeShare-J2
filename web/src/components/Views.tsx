@@ -15,6 +15,7 @@ import {
   type ExampleView,
   type Route,
 } from "../model.ts"
+import { Icon } from "../icons.tsx"
 import { ScorePanel } from "./ScorePanel.tsx"
 import { SourceView } from "./SourceView.tsx"
 
@@ -67,13 +68,13 @@ export function ExamplesHome({ examples }: { examples: ExampleRecord[] }) {
                 </dl>
                 <div className="actions">
                   <a className="button" href={formatHash({ page: "example", exampleId: example.id, view: "files", severity: "", category: "", rule: "", file: "", finding: "" })}>
-                    Open example
+                    <Icon name="files" /> Open example
                   </a>
                   <a className="button button-secondary" href={formatHash({ page: "example", exampleId: example.id, view: "findings", severity: "", category: "", rule: "", file: "", finding: "" })}>
-                    View findings
+                    <Icon name="findings" /> View findings
                   </a>
                   <a className="button button-secondary" href={formatHash({ page: "example", exampleId: example.id, view: "compare", severity: "", category: "", rule: "", file: "", finding: "" })}>
-                    Compare sanitization
+                    <Icon name="compare" /> Compare sanitization
                   </a>
                 </div>
               </article>
@@ -103,7 +104,9 @@ function FileList({
         return (
           <li key={file.path}>
             <a href={href} aria-current={current ? "true" : undefined}>
-              <span className="file-path">{file.path}</span>
+              <span className="file-path">
+                <Icon name="file" /> {file.path}
+              </span>
               <span className="file-count">{count} findings</span>
             </a>
           </li>
@@ -240,13 +243,13 @@ export function ExampleWorkspace({
         <p className="fine">Fixture provenance: {example.provenance}</p>
         <div className="actions">
           <a className="button button-secondary" href={formatHash({ ...route, view: "files" })} aria-current={route.view === "files" ? "page" : undefined}>
-            Browse files
+            <Icon name="files" /> Browse files
           </a>
           <a className="button button-secondary" href={formatHash({ ...route, view: "findings" })} aria-current={route.view === "findings" ? "page" : undefined}>
-            View findings
+            <Icon name="findings" /> View findings
           </a>
           <a className="button button-secondary" href={formatHash({ ...route, view: "compare" })} aria-current={route.view === "compare" ? "page" : undefined}>
-            Compare sanitization
+            <Icon name="compare" /> Compare sanitization
           </a>
         </div>
       </header>
@@ -306,10 +309,10 @@ export function ExampleWorkspace({
           {route.view === "compare" ? <Compare example={example} route={route} /> : null}
           <div className="actions">
             <button type="button" onClick={() => downloadReport(downloadName(example.id, "original"), example.originalReportText)}>
-              Download masked JSON report
+              <Icon name="download" /> Download masked JSON report
             </button>
             <button type="button" onClick={() => downloadReport(downloadName(example.id, "rescan"), example.sanitizedReportText)}>
-              Download rescan JSON report
+              <Icon name="download" /> Download rescan JSON report
             </button>
           </div>
         </div>

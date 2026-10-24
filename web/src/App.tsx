@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { loadPublishedBundle, type LoadedBundle } from "./data.ts"
 import { parseHash, type Route } from "./model.ts"
 import { ExampleWorkspace, ExamplesHome, HowView, ProvenanceFooter, RulesView } from "./components/Views.tsx"
+import { Icon, Mark } from "./icons.tsx"
 
 function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash))
@@ -38,7 +39,10 @@ export function App() {
       </a>
       <header className="site-header">
         <p className="kicker">SafeShare J2</p>
-        <h1>SafeShare J2 Explorer</h1>
+        <div className="title-row">
+          <Mark />
+          <h1>SafeShare J2 Explorer</h1>
+        </div>
         <p className="banner">Actual J2-generated results · Synthetic examples · Interactive report viewer</p>
         <ul className="boundary">
           <li>J2 runs during dataset generation, before publication.</li>
@@ -49,13 +53,13 @@ export function App() {
       </header>
       <nav className="site-nav" aria-label="Primary">
         <a href="#/examples" aria-current={route.page === "examples" ? "page" : undefined}>
-          Examples
+          <Icon name="files" /> Examples
         </a>
         <a href="#/rules" aria-current={route.page === "rules" ? "page" : undefined}>
-          Rule explorer
+          <Icon name="rules" /> Rule explorer
         </a>
         <a href="#/how" aria-current={route.page === "how" ? "page" : undefined}>
-          How it works
+          <Icon name="how" /> How it works
         </a>
       </nav>
       <main id="content" className="wrap">
