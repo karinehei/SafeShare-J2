@@ -1,6 +1,13 @@
-# <img src="web/public/favicon.svg" alt="" width="28" height="28" align="absmiddle"> SafeShare J2
+# SafeShare J2
 
 A local-first scanner that looks for secret-shaped strings, credentials, and a few risky config flags in a directory **before** you zip the tree or paste it into an AI assistant.
+
+[![CI](https://img.shields.io/github/actions/workflow/status/karinehei/SafeShare-J2/ci.yml?label=CI&logo=github)](https://github.com/karinehei/SafeShare-J2/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-green)](LICENSE)
+[![J2](https://img.shields.io/badge/J2-0.1.0-blue)](https://j2-lang.org/)
+[![Platform](https://img.shields.io/badge/platform-Apple_Silicon-111111?logo=apple&logoColor=white)](https://j2-lang.org/download.html)
+
+License: [Apache License 2.0](LICENSE) — Copyright 2026 Karine Heinonen
 
 SafeShare is **not** a replacement for enterprise secret-scanning products (GitHub Advanced Security, TruffleHog-in-CI, cloud DLP, and the rest). It is a small, readable J2 program you run on a laptop: lightweight, local-first, zero-network, and transparent about being a heuristic.
 
