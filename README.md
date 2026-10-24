@@ -1,4 +1,4 @@
-# SafeShare J2
+# <img src="web/public/favicon.svg" alt="" width="28" height="28" align="absmiddle"> SafeShare J2
 
 A local-first scanner that looks for secret-shaped strings, credentials, and a few risky config flags in a directory **before** you zip the tree or paste it into an AI assistant.
 
