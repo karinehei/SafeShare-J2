@@ -1,5 +1,11 @@
-# Publish the static SafeShare J2 Explorer. Manual only: workflow_dispatch.
-# This file does not run on push. Do not enable Pages from this commit.
+# SafeShare J2 Explorer. Manual only: workflow_dispatch.
+# This file does not run on push and does not enable Pages hosting.
+#
+# deploy defaults to false. A validation run installs the pinned J2 toolchain,
+# checks formatting, runs the J2 tests and the demo-project smoke check,
+# generates the explorer bundle, then tests and builds the viewer. It uploads
+# safeshare-j2-demo-data and does not publish the site.
+# Set deploy to true only when a release should go to GitHub Pages.
 #
 # Job split:
 #   generate  macos-26 (Apple Silicon, same pin as ci.yml). Installs J2 from
@@ -9,14 +15,28 @@
 #   build     ubuntu-24.04. Installs npm dependencies, tests, and builds.
 #             It receives only this run's safeshare-j2-demo-data artifact.
 #   deploy    official GitHub Pages actions, github-pages environment.
+#             Skipped unless deploy is true.
 #
 # macos-26 is the hosted Apple Silicon image. macos-26-intel is Intel.
 # macos-latest is an alias and is not used. ubuntu-latest is not used.
+#
+# Action majors checked against GitHub releases on 2026-10-24:
+#   actions/checkout@v7 (current v7)
+#   actions/upload-artifact@v7 (current; matches benchmark.yml and manual-test.yml)
+#   actions/download-artifact@v8 (current download client for that artifact service)
+#   actions/setup-node@v7 (current)
+#   actions/upload-pages-artifact@v5 (current; bundles upload-artifact v7)
+#   actions/deploy-pages@v5 (current; compatible with upload-pages-artifact v3+)
 
 name: GitHub Pages
 
 on:
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Publish the built explorer to GitHub Pages
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,14 +70,51 @@ jobs:
           j2 --version
           j2 --version | grep -q "0.1.0"
 
+      - name: Format validation
+        # Same check as ci.yml. j2 0.1.0 fmt has no --check flag.
+        run: |
+          set -euo pipefail
+          failed=0
+          find . -name '*.j2' ! -path './.git/*' ! -path './tests/lib/*' | LC_ALL=C sort > "${RUNNER_TEMP}/j2-files.txt"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            tmp=$(mktemp "${RUNNER_TEMP}/fmt.XXXXXX")
+            j2 fmt "$f" > "$tmp"
+            if ! cmp -s "$f" "$tmp"; then
+              echo "unformatted: $f"
+              diff -u "$f" "$tmp" || true
+              failed=1
+            fi
+            rm -f "$tmp"
+          done < "${RUNNER_TEMP}/j2-files.txt"
+          if [ "$failed" -ne 0 ]; then
+            echo "Committed .j2 files do not match j2 fmt. Run: j2 fmt -w FILE.j2"
+            exit 1
+          fi
+
       - name: Unit and regression tests
         run: sh scripts/ci/run-tests.sh
+
+      - name: Demo-project smoke test
+        run: |
+          set -euo pipefail
+          json1="${RUNNER_TEMP}/demo-report-1.json"
+          json2="${RUNNER_TEMP}/demo-report-2.json"
+          log="${RUNNER_TEMP}/demo-scan.txt"
+          demo="demo-project"
+          test -d "$demo"
+
+          j2 --allow-fs src/main.j2 scan "$demo" --json "$json1" | tee "$log"
+          j2 --allow-fs src/main.j2 scan "$demo" --json "$json2" > /dev/null
+
+          cmp -s "$json1" "$json2"
+          python3 scripts/ci/verify-demo-smoke.py "$json1" "$log"
 
       - name: Generate explorer bundle
         run: python3 scripts/demo/generate.py
 
       - name: Upload demo data from this run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: safeshare-j2-demo-data
           path: web/public/demo-data
@@ -80,7 +137,7 @@ jobs:
           persist-credentials: false
 
       - name: Download demo data from this run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: safeshare-j2-demo-data
           path: web/public/demo-data
@@ -94,7 +151,7 @@ jobs:
           test ! -e web/public/demo-data/.env
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -108,13 +165,18 @@ jobs:
           npm test
           npm run build:demo
 
+      - name: Require the production build
+        run: test -f web/dist/index.html
+
       - name: Upload Pages artifact
+        if: ${{ inputs.deploy == true }}
         uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist
 
   deploy:
     name: Deploy to GitHub Pages
+    if: ${{ inputs.deploy == true }}
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10

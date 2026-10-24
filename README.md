@@ -128,15 +128,15 @@ npm run preview:demo
 
 ### Publish manually
 
-The workflow is `.github/workflows/pages.yml`. It is `workflow_dispatch` only. It does not run on push.
+The workflow is `.github/workflows/pages.yml`. It is `workflow_dispatch` only. It does not run on push. The `deploy` input defaults to **false**.
 
 1. In the repository settings, set GitHub Pages to deploy from **GitHub Actions**. Do not publish the repository root as a branch site.
-2. Open **Actions → GitHub Pages → Run workflow**.
-3. The generate job uses the same `macos-26` runner and `scripts/ci/install-j2.sh` checksum install as CI, runs the J2 tests, and uploads `safeshare-j2-demo-data` from that run.
-4. The build job downloads that artifact, runs `npm ci`, `npm test`, and `npm run build:demo` on `ubuntu-24.04`, then uploads `web/dist` with `actions/upload-pages-artifact@v5`.
-5. The deploy job uses `actions/deploy-pages@v5` in the `github-pages` environment.
+2. Open **Actions → GitHub Pages → Run workflow**. Leave **Publish the built explorer to GitHub Pages** unchecked to validate without publishing.
+3. The generate job uses the same `macos-26` runner and `scripts/ci/install-j2.sh` checksum install as CI. It checks `j2 fmt`, runs the J2 tests (including the report schema and rule catalog), runs the demo-project smoke check, runs `scripts/demo/generate.py`, and uploads `safeshare-j2-demo-data` from that run.
+4. The build job downloads that artifact, runs `npm ci`, `npm test`, and `npm run build:demo` on `ubuntu-24.04`.
+5. When `deploy` is true, the build job also uploads `web/dist` with `actions/upload-pages-artifact@v5`, and the deploy job publishes that artifact with `actions/deploy-pages@v5` in the `github-pages` environment.
 
-This tree does not enable hosting by itself. The site is not live until that workflow succeeds.
+A validation run does not publish the site. The site is not live until a run with `deploy` enabled succeeds.
 
 ## Installation
 
