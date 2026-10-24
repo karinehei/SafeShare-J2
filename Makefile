@@ -23,7 +23,7 @@ ALL_J2 := $(shell find . -name '*.j2' ! -path './.git/*' ! -path './tests/lib/*'
 
 .PHONY: help all check test fmt fmt-check build \
 	scan demo sanitize corpus evaluate benchmark benchmark-native \
-	smoke self-scan clean
+	smoke self-scan demo-data clean
 
 help:
 	@echo "SafeShare J2"
@@ -43,6 +43,7 @@ help:
 	@echo "  make benchmark-native   time CORPUS after j2 build (still via j2 --allow-fs)"
 	@echo "  make smoke              native compile, then interpreter smoke of demo-project"
 	@echo "  make self-scan          native compile, then interpreter scan of this repo"
+	@echo "  make demo-data          run J2 on synthetic fixtures and write web/public/demo-data"
 	@echo "  make clean              remove binary, generated corpus, sanitize output"
 	@echo ""
 	@echo "Variables: SCAN OUTPUT CORPUS REPEAT TRIALS WARMUP JSON J2"
@@ -133,6 +134,10 @@ self-scan: $(BIN)
 	python3 scripts/ci/verify-self-scan.py "$$json"; \
 	rm -rf "$$tmp"
 
+# Interpreter only. Writes the Pages bundle; does not deploy.
+demo-data:
+	python3 scripts/demo/generate.py
+
 clean:
 	rm -f $(BIN)
-	rm -rf $(CORPUS) corpus-out $(OUTPUT)
+	rm -rf $(CORPUS) corpus-out $(OUTPUT) web/public/demo-data web/dist

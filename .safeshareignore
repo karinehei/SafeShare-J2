@@ -19,3 +19,15 @@ corpus-out/
 
 # Synthetic kit constants (FAKE_AWS, dummy PEM, etc.). Product code stays scanned.
 src/corpus.j2
+
+# Pages explorer fixtures only. Rooted so a folder named examples elsewhere
+# stays scanned. Frontend sources under web/src stay scanned.
+/examples/
+
+# Generated bundle embeds those fixture sources for the static viewer.
+# Narrower than ignoring web/: product TypeScript stays in the self-scan.
+/web/public/demo-data/
+
+# npm integrity digests in the lockfile are sha512 base64, which the entropy
+# heuristic can flag. This is the lockfile only. web/src stays scanned.
+/web/package-lock.json

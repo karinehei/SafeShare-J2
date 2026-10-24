@@ -154,17 +154,29 @@ func findings_json_records(findings) = {
 }
 
 # Document as J2 maps/seqs, then json.stringify. Do not concatenate JSON text.
+# `risk` is the score_findings record. Callers must display it; they must not
+# recompute the bands. safe_to_share is never true: zero findings is not clearance.
 func scan_report_document(result) = {
     risk = score_findings(result.findings)
-    # safe_to_share is never true: zero findings is not a clearance to paste the tree.
     give {
         version: SAFESHARE_VERSION,
         summary: {
             files_scanned: result.files_scanned,
+            files_skipped: result.files_skipped,
             findings: result.findings_count,
             risk_score: risk.score,
             assessment: json_assessment(risk.label),
             safe_to_share: false
+        },
+        risk: {
+            score: risk.score,
+            label: risk.label,
+            reason: risk.reason,
+            critical_points: risk.critical_points,
+            high_points: risk.high_points,
+            medium_points: risk.medium_points,
+            low_points: risk.low_points,
+            credential_bonus: risk.credential_bonus
         },
         findings: findings_json_records(result.findings)
     }

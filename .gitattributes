@@ -1,0 +1,3 @@
+examples/** text eol=lf
+web/** text eol=lf
+scripts/demo/** text eol=lf

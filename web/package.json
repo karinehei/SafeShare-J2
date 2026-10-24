@@ -1,0 +1,29 @@
+{
+  "name": "safeshare-j2-explorer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/check-demo-data.ts && vite",
+    "test": "vitest run",
+    "build:demo": "node scripts/check-demo-data.ts && tsc --noEmit && vite build",
+    "preview:demo": "node scripts/check-demo-data.ts && vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "check:demo-data": "node scripts/check-demo-data.ts"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

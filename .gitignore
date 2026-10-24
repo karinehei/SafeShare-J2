@@ -3,3 +3,8 @@ corpus-out/
 /safeshare
 /tests/lib
 
+# Generated explorer bundle (real J2 output). Do not hand-author this tree.
+/web/public/demo-data/
+/web/node_modules/
+/web/dist/
+

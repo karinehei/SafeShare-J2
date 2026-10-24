@@ -1,0 +1,8 @@
+import "rules_export.j2"
+
+# Prints the rule catalog as JSON. Run with the interpreter:
+#   j2 src/export_rules.j2
+# No --allow-fs and no --allow-net. Do not import this file from tests:
+# the print below runs at load. Test rules_catalog_document instead.
+
+print(rules_catalog_json())

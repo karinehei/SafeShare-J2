@@ -1,0 +1,76 @@
+import "rules_export.j2"
+
+doc = rules_catalog_document()
+assert_eq(doc.version, "0.1.0")
+assert_eq(doc.source, "src/rules.j2")
+assert_eq(doc.entropy_source, "src/entropy.j2")
+assert_eq(count(doc.high_confidence_rules), 4)
+assert_eq(contains(doc.high_confidence_rules, "aws_access_key_id"), true)
+assert_eq(contains(doc.high_confidence_rules, "github_token"), true)
+assert_eq(contains(doc.high_confidence_rules, "pem_private_key"), true)
+assert_eq(contains(doc.high_confidence_rules, "database_url_credentials"), true)
+assert_eq(contains(doc.high_confidence_rules, "jwt_token"), false)
+assert_eq(contains(doc.high_confidence_rules, ENTROPY_RULE_ID), false)
+
+func entry_by_id(rules, id) = {
+    for e in rules {
+        if e.id == id {
+            give e
+        }
+    }
+    assert false, id
+}
+
+aws = entry_by_id(doc.rules, "aws_access_key_id")
+assert_eq(aws.severity, "critical")
+assert_eq(aws.category, "secret")
+assert_eq(aws.family, "known_token")
+assert_eq(aws.sanitization, true)
+assert_eq(aws.detector, "regex")
+assert_eq(aws.source, "src/rules.j2")
+assert_eq(aws.pattern, rule_by_id("aws_access_key_id").pattern)
+assert_eq(aws.patterns[0], aws.pattern)
+assert_eq(aws.description, rule_by_id("aws_access_key_id").description)
+
+jwt = entry_by_id(doc.rules, "jwt_token")
+assert_eq(jwt.sanitization, false)
+assert_eq(jwt.family, "known_token")
+
+debug = entry_by_id(doc.rules, "debug_enabled")
+assert_eq(debug.category, "risky_config")
+assert_eq(debug.family, "risky_config")
+assert_eq(debug.sanitization, false)
+assert_eq(debug.applies, rule_by_id("debug_enabled").applies)
+
+ent = entry_by_id(doc.rules, ENTROPY_RULE_ID)
+assert_eq(ent.family, "entropy")
+assert_eq(ent.detector, "entropy")
+assert_eq(ent.source, "src/entropy.j2")
+assert_eq(ent.sanitization, false)
+assert_eq(ent.category, ENTROPY_CATEGORY)
+assert_eq(ent.severity, "medium")
+assert_eq(ent.min_len, ENTROPY_MIN_LEN)
+assert_eq(ent.min_bits, ENTROPY_MIN_BITS)
+assert_eq(ent.recommendation, entropy_recommendation())
+assert_eq(count(ent.patterns), 3)
+assert_eq(ent.patterns[0], ENTROPY_ASSIGN_QUOTED)
+assert_eq(ent.patterns[1], ENTROPY_ASSIGN_BARE)
+assert_eq(ent.patterns[2], ENTROPY_QUOTED)
+
+assert_eq(count(doc.rules), count(builtin_rules()) + 1)
+
+seen := []
+for e in doc.rules {
+    assert_eq(contains(seen, e.id), false)
+    push(seen, e.id)
+    listed = contains(doc.high_confidence_rules, e.id)
+    assert_eq(e.sanitization, listed)
+}
+
+text = rules_catalog_json()
+parsed = json.parse(text)
+assert_eq(parsed.version, "0.1.0")
+assert_eq(count(parsed.rules), count(doc.rules))
+assert_eq(contains(text, ENTROPY_RULE_ID), true)
+
+print("rules_export_test ok")

@@ -1,0 +1,132 @@
+# Publish the static SafeShare J2 Explorer. Manual only: workflow_dispatch.
+# This file does not run on push. Do not enable Pages from this commit.
+#
+# Job split:
+#   generate  macos-26 (Apple Silicon, same pin as ci.yml). Installs J2 from
+#             the checksummed release, then runs the scanner. The install step
+#             downloads the toolchain. Scan and sanitize commands do not pass
+#             --allow-net.
+#   build     ubuntu-24.04. Installs npm dependencies, tests, and builds.
+#             It receives only this run's safeshare-j2-demo-data artifact.
+#   deploy    official GitHub Pages actions, github-pages environment.
+#
+# macos-26 is the hosted Apple Silicon image. macos-26-intel is Intel.
+# macos-latest is an alias and is not used. ubuntu-latest is not used.
+
+name: GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Generate demo data with J2
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install J2 0.1.0
+        run: |
+          chmod +x scripts/ci/install-j2.sh
+          ./scripts/ci/install-j2.sh
+
+      - name: Verify j2 --version
+        run: |
+          j2 --version
+          j2 --version | grep -q "0.1.0"
+
+      - name: Unit and regression tests
+        run: sh scripts/ci/run-tests.sh
+
+      - name: Generate explorer bundle
+        run: python3 scripts/demo/generate.py
+
+      - name: Upload demo data from this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: safeshare-j2-demo-data
+          path: web/public/demo-data
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    name: Test and build explorer
+    needs: generate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download demo data from this run
+        uses: actions/download-artifact@v4
+        with:
+          name: safeshare-j2-demo-data
+          path: web/public/demo-data
+
+      - name: Require the downloaded bundle
+        run: |
+          set -euo pipefail
+          test -f web/public/demo-data/catalog.json
+          test -f web/public/demo-data/manifest.json
+          test -f web/public/demo-data/rules.json
+          test ! -e web/public/demo-data/.env
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install, test, and build
+        working-directory: web
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test
+          npm run build:demo
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+      actions: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

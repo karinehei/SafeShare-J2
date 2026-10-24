@@ -35,7 +35,7 @@ J2 0.1.0’s public toolchain is **macOS on Apple Silicon**. This repo is the pr
 
 - **Scan** a directory or a single file. Default max text size is 1 MB per file; binaries and NUL-containing buffers are skipped.
 - **Terminal report** with severity, mask, recommendation, and a 0–100 risk score (diminishing returns so 100 `DEBUG=true` hits cannot look like an incident).
-- **JSON report** (`--json FILE`) built as maps, then `json.stringify_pretty` — not string-concatenated JSON.
+- **JSON report** (`--json FILE`) built as maps, then `json.stringify_pretty` — not string-concatenated JSON. `summary` includes `files_skipped`. A `risk` object repeats `score_findings` (score, label, reason, and band points) so a viewer does not recompute the score. `safe_to_share` stays false.
 - **`--ai-share`** highlights paths people commonly paste into assistants (`.env`, Markdown, `.cursor/`, `.github/`, …).
 - **`.safeshareignore`** — a small, documented subset of gitignore (not `**`, not negation). Built-in skips include `.git/`, `node_modules/`, `dist/`, and the like.
 - **Sanitize** — copy text to a destination **outside** the source tree; redact only AWS key ids, GitHub tokens, PEM private-key blocks, and database URLs with userinfo. Never `fs.copy` (that can copy a symlink that still points at a secret).
@@ -58,6 +58,78 @@ j2 --allow-fs src/main.j2 scan ./demo-project --ai-share
 | LOW | `docker-compose.yml` | `DEBUG=true` |
 
 Share verdict: **NO**. Details: [`demo-project/README.md`](demo-project/README.md).
+
+## GitHub Pages explorer
+
+The explorer is a static report viewer for **actual J2 output** on synthetic fixtures. It is not a scanner, and it is not live until someone runs the manual Pages workflow and GitHub finishes a deploy.
+
+Expected URL after a successful deploy: <https://karinehei.github.io/SafeShare-J2/>
+
+J2 runs during dataset generation, before publication. The browser displays those previously generated results. Nothing in the visitor’s browser scans files, sanitizes them, or talks to the J2 runtime. GitHub Pages does not inherit `--allow-fs`. A `j2 build` binary does not inherit it either; generation uses `j2 --allow-fs src/main.j2 …` and never `--allow-net`. Downloading the J2 toolchain is a separate install step. The scan itself is not a network-free description of the whole CI job.
+
+The bundle is heuristic detection on purpose-built fixtures. Absence of findings is not clearance. JSON `safe_to_share` stays `false`. The share line is **NO** when credential findings exist, and **Not guaranteed** otherwise. There is no Safe, Approved, or YES state. Sanitize is partial: only four high-confidence rule ids are redacted.
+
+### Fixtures
+
+| Directory | What it is for |
+| --- | --- |
+| `demo-project/` | The original two-minute demo |
+| `examples/high-confidence/` | AWS documentation example, dummy GitHub token, dummy database URL, PEM block |
+| `examples/heuristic-remains/` | Heuristic credentials that sanitize copies through, plus one redactable AWS id |
+| `examples/risky-config/` | Risky settings and no credential-shaped literals |
+| `examples/placeholders/` | Placeholders and negative examples |
+
+Provenance is in [`examples/PROVENANCE.md`](examples/PROVENANCE.md). Values are the published AWS example or dummy alphabets already used in `tests/`. `/examples/` and `/web/public/demo-data/` are rooted `.safeshareignore` entries so repo self-scan still reads `web/src`. `web/package-lock.json` is ignored as well: npm `sha512` integrity strings are base64 and can trip the entropy heuristic. `web/package.json` and `web/src` stay scanned. Fixture `.env` files are not frontend environment files; Vite’s project root is `web/`.
+
+### Generate the bundle
+
+Requires **J2 0.1.0 on macOS Apple Silicon**. From the repository root:
+
+```sh
+python3 scripts/demo/generate.py
+# or: make demo-data
+```
+
+The script checks an allowlist, runs `j2 --allow-fs src/main.j2 scan` and `sanitize` (output in a temporary directory outside the fixture), scans that copy, and runs `j2 src/export_rules.j2`. A non-zero J2 exit fails the run. A scan that finds credentials still exits 0; that is the CLI contract, and the script treats it as success only when the JSON reports match the schema and the expected rule ids. It writes `web/public/demo-data/` only after those checks. It does not invent findings. Failed runs leave the previous bundle unpublished.
+
+Regenerate after any scanner, scorer, sanitizer, or fixture change. Do not hand-edit the JSON.
+
+Rule metadata comes from `src/rules_export.j2` (tests import that module). `src/export_rules.j2` prints JSON at load, so tests do not import it.
+
+### Build the viewer without running J2
+
+Windows and Linux cannot run J2 0.1.0. They can still build the viewer from a bundle that generation already produced. Copying the files does not mean J2 executed on that machine.
+
+Obtain the bundle in one of two ways:
+
+1. On Apple Silicon, run `python3 scripts/demo/generate.py` and keep `web/public/demo-data/`.
+2. After a successful **GitHub Pages** workflow run, download the `safeshare-j2-demo-data` artifact from **that** run and place its files in `web/public/demo-data/`.
+
+Then, from `web/`:
+
+```sh
+npm ci
+npm test
+npm run dev
+npm run build:demo
+npm run preview:demo
+```
+
+`dev`, `build:demo`, and `preview:demo` refuse to start when `web/public/demo-data/` is missing or fails the schema check. They do not substitute an empty explorer or fabricated reports. The Vite `base` is `/SafeShare-J2/`. Routes live in the URL hash (`#/examples/demo-project/findings`) so reloads work on GitHub Pages. Preview the production build at `http://127.0.0.1:4173/SafeShare-J2/`.
+
+`npm test` does not need the bundle. It checks filtering, hash routing, share wording, and rejection of invalid reports.
+
+### Publish manually
+
+The workflow is `.github/workflows/pages.yml`. It is `workflow_dispatch` only. It does not run on push.
+
+1. In the repository settings, set GitHub Pages to deploy from **GitHub Actions**. Do not publish the repository root as a branch site.
+2. Open **Actions → GitHub Pages → Run workflow**.
+3. The generate job uses the same `macos-26` runner and `scripts/ci/install-j2.sh` checksum install as CI, runs the J2 tests, and uploads `safeshare-j2-demo-data` from that run.
+4. The build job downloads that artifact, runs `npm ci`, `npm test`, and `npm run build:demo` on `ubuntu-24.04`, then uploads `web/dist` with `actions/upload-pages-artifact@v5`.
+5. The deploy job uses `actions/deploy-pages@v5` in the `github-pages` environment.
+
+This tree does not enable hosting by itself. The site is not live until that workflow succeeds.
 
 ## Installation
 
@@ -163,7 +235,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on **macos-26** (hosted Apple S
 4. Compiles `j2 build src/main.j2 -o safeshare` (binary `--help`) and smokes `demo-project/` with `j2 --allow-fs src/main.j2 scan …` (JSON, five expected findings, no raw fixture secrets).
 5. Self-scans the repo the same way (`scan . --ai-share`). Known synthetic trees are listed in `.safeshareignore` (`demo-project/`, `tests/`, …), not by weakening detectors.
 
-Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a separate manual workflow (`.github/workflows/benchmark.yml`); they are not a required PR check. GitHub-hosted timings are noisy and should not be quoted as product performance. Windows and Linux contributors can run an exploratory scan on hosted Apple Silicon; see [Testing without a Mac](#testing-without-a-mac).
+Filesystem grant is `--allow-fs` only. Never `--allow-net`. Benchmarks are a separate manual workflow (`.github/workflows/benchmark.yml`); they are not a required PR check. The Pages explorer (`.github/workflows/pages.yml`) is also manual and is not a required PR check. GitHub-hosted timings are noisy and should not be quoted as product performance. Windows and Linux contributors can run an exploratory scan on hosted Apple Silicon; see [Testing without a Mac](#testing-without-a-mac). The explorer’s dataset is generated on that same Apple Silicon runner; see [GitHub Pages explorer](#github-pages-explorer).
 
 ## Testing without a Mac
 
@@ -293,11 +365,16 @@ src/report.j2         terminal + JSON
 src/risk.j2           0–100 score
 src/ai_share.j2       --ai-share
 src/sanitize.j2       copy-and-redact
+src/rules_export.j2   rule catalog for the explorer (no load-time run)
+src/export_rules.j2   prints that catalog; do not import from tests
 src/benchmark.j2      timed trials
 src/corpus.j2         generate / evaluate
 src/util.j2           paths, skip lists
 demo-project/         two-minute fixture
-tests/                assert_eq; no import of src/main.j2
+examples/             extra synthetic fixtures for the explorer
+scripts/demo/         allowlisted J2 generation for the Pages bundle
+web/                  static React viewer; scans nothing
+tests/                assert_eq; no import of src/main.j2 or src/export_rules.j2
 ```
 
 **I/O is serial:** `list_dir`, `read_file`, `write_file`. **Analysis is pure:** `analyze_snapshot` / `analyze_all` / `redact_content` / `score_findings`. That split is the whole design. Do not add a thread pool.

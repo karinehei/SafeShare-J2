@@ -1,0 +1,5 @@
+# Ordinary digests and the RFC 4122 sample UUID, from tests/false_positive_test.j2.
+CHECKSUM = "5d41402abc4b2a76b9719d911017c592"
+SHA1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+USER_ID = "550e8400-e29b-41d4-a716-446655440000"

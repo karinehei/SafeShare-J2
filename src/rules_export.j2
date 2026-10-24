@@ -1,0 +1,114 @@
+import "rules.j2"
+import "sanitize.j2"
+
+# Catalog of detector metadata for the static explorer.
+# Patterns are copied from the live rule table and entropy constants.
+# This file does not run at load. src/export_rules.j2 prints the JSON.
+
+func applies_label(rule) = {
+    if rule.applies == "*" or rule.applies == "" {
+        give "Every scanned text file"
+    }
+    give "Paths matched by this rule's applies expression (configuration-like names only)"
+}
+
+func rule_family(id) = {
+    if contains(KNOWN_TOKEN_IDS, id) {
+        give "known_token"
+    }
+    if contains(PRIVATE_KEY_IDS, id) {
+        give "private_key"
+    }
+    if contains(DATABASE_CREDENTIAL_IDS, id) {
+        give "database_credential"
+    }
+    if contains(SENSITIVE_DATA_IDS, id) {
+        give "sensitive_data"
+    }
+    if contains(RISKY_CONFIG_IDS, id) {
+        give "risky_config"
+    }
+    give "other"
+}
+
+func rule_limitations(rule) = {
+    if rule.category == "risky_config" {
+        give "Risky configuration, not a credential. Sanitize does not modify these lines. A match is not proof of an incident."
+    }
+    if rule_redacts(rule) {
+        give "Higher-confidence shape. Sanitize can replace it with the redaction placeholder. Presence of the shape is not proof the credential is live."
+    }
+    give "Heuristic credential shape. Sanitize copies it through on purpose. A match is not proof the value is live."
+}
+
+func rule_catalog_entry(rule) = {
+    give {
+        id: rule.id,
+        name: rule.name,
+        category: rule.category,
+        severity: rule.severity.name,
+        family: rule_family(rule.id),
+        applies: rule.applies,
+        applies_label: applies_label(rule),
+        description: rule.description,
+        recommendation: rule.recommendation,
+        limitations: rule_limitations(rule),
+        placeholders: rule.placeholders,
+        min_len: rule.min_len,
+        min_bits: 0,
+        pattern: rule.pattern,
+        patterns: [rule.pattern],
+        sanitization: rule_redacts(rule),
+        source: "src/rules.j2",
+        detector: "regex"
+    }
+}
+
+func entropy_limitations() = fmt("Separate detector in src/entropy.j2, not a builtin_rules() row. Requires length >= {}, Shannon entropy >= {} bits/char, and a mixed charset. Skips hashes, UUIDs, and known credential prefixes. Sanitize does not redact this rule.", ENTROPY_MIN_LEN, ENTROPY_MIN_BITS)
+
+func entropy_catalog_entry() = {
+    redacts = contains(HIGH_CONFIDENCE_REDACT_IDS, ENTROPY_RULE_ID)
+    give {
+        id: ENTROPY_RULE_ID,
+        name: ENTROPY_MESSAGE,
+        category: ENTROPY_CATEGORY,
+        severity: Severity::medium().name,
+        family: "entropy",
+        applies: "*",
+        applies_label: "Quoted and assigned tokens in scanned text",
+        description: "Shannon-entropy heuristic over quoted and assigned tokens. High entropy is not proof of a credential.",
+        recommendation: entropy_recommendation(),
+        limitations: entropy_limitations(),
+        placeholders: false,
+        min_len: ENTROPY_MIN_LEN,
+        min_bits: ENTROPY_MIN_BITS,
+        pattern: "",
+        patterns: [ENTROPY_ASSIGN_QUOTED, ENTROPY_ASSIGN_BARE, ENTROPY_QUOTED],
+        sanitization: redacts,
+        source: "src/entropy.j2",
+        detector: "entropy"
+    }
+}
+
+func rules_catalog_entries() = {
+    rules = builtin_rules()
+    out := []
+    i := 0
+    repeat i < count(rules) {
+        out = out + [rule_catalog_entry(rules[i])]
+        i += 1
+    }
+    give out + [entropy_catalog_entry()]
+}
+
+func rules_catalog_document() = {
+    give {
+        version: "0.1.0",
+        source: "src/rules.j2",
+        entropy_source: "src/entropy.j2",
+        high_confidence_rules: HIGH_CONFIDENCE_REDACT_IDS,
+        rules: rules_catalog_entries()
+    }
+}
+
+func rules_catalog_json() = json.stringify_pretty(rules_catalog_document())

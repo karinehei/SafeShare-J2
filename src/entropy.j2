@@ -14,6 +14,11 @@ import "finding.j2"
 ENTROPY_MIN_LEN = 24
 ENTROPY_MIN_BITS = 4.5
 ENTROPY_MIN_UNIQUE = 0.4
+ENTROPY_RULE_ID = "high_entropy_string"
+ENTROPY_CATEGORY = "heuristic"
+ENTROPY_MESSAGE = "Possible high-entropy credential"
+
+func entropy_recommendation() = "This is a heuristic, not proof of a secret. If the value is a credential, rotate it and load it from the environment. If it is a hash, fixture, or identifier, ignore the finding"
 
 ENTROPY_ASSIGN_QUOTED = "([A-Za-z_][A-Za-z0-9_]*)\\s*[=:]\\s*[\"']([^\"']{24,})[\"']"
 ENTROPY_ASSIGN_BARE = "([A-Za-z_][A-Za-z0-9_]*)\\s*[=:]\\s*([A-Za-z0-9+/=_\\-.]{24,})"
@@ -221,15 +226,15 @@ func make_entropy_finding(path, content, start, name, raw) = {
     loc = line_column_at(content, start)
     bits = shannon_entropy(raw)
     give make_finding({
-            rule_id: "high_entropy_string",
+            rule_id: ENTROPY_RULE_ID,
             severity: Severity::medium(),
             file: path,
             line: loc.line,
             column: loc.column,
-            category: "heuristic",
-            message: "Possible high-entropy credential",
+            category: ENTROPY_CATEGORY,
+            message: ENTROPY_MESSAGE,
             reason: entropy_reason(name, raw, bits),
-            recommendation: "This is a heuristic, not proof of a secret. If the value is a credential, rotate it and load it from the environment. If it is a hash, fixture, or identifier, ignore the finding"
+            recommendation: entropy_recommendation()
         }, raw)
 }
 
