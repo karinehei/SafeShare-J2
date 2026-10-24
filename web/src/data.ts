@@ -73,10 +73,21 @@ export function jsonFromResponseBody(url: string, status: number, contentType: s
   }
 }
 
-async function fetchJson(url: string, signal: AbortSignal | undefined) {
+async function fetchJson(url: string, signal: AbortSignal | undefined): Promise<unknown> {
   const response = await fetch(url, { signal })
   const body = await response.text()
   return jsonFromResponseBody(url, response.status, response.headers.get("content-type") ?? "", body)
+}
+
+function catalogExamples(catalog: unknown): Parameters<typeof hydrateExample>[0][] {
+  if (!catalog || typeof catalog !== "object" || !("examples" in catalog)) {
+    throw new Error("catalog.json has no examples array")
+  }
+  const examples = (catalog as { examples: unknown }).examples
+  if (!Array.isArray(examples)) {
+    throw new Error("catalog.json has no examples array")
+  }
+  return examples as Parameters<typeof hydrateExample>[0][]
 }
 
 export async function loadPublishedBundle(signal?: AbortSignal): Promise<LoadedBundle> {
@@ -94,7 +105,7 @@ export async function loadPublishedBundle(signal?: AbortSignal): Promise<LoadedB
     return {
       manifest: manifest as ManifestFile,
       rules: rules as RulesFile,
-      examples: catalog.examples.map(hydrateExample),
+      examples: catalogExamples(catalog).map(hydrateExample),
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error

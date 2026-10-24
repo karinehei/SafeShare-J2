@@ -61,9 +61,9 @@ jobs:
           persist-credentials: false
 
       - name: Install J2 0.1.0
-        run: |
-          chmod +x scripts/ci/install-j2.sh
-          ./scripts/ci/install-j2.sh
+        # Invoke with sh. chmod +x would change this 100644 file and make
+        # git status dirty, which the manifest would record.
+        run: sh scripts/ci/install-j2.sh
 
       - name: Verify j2 --version
         run: |
